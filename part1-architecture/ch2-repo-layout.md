@@ -7,7 +7,7 @@ deepseek-harness 是一个 pnpm workspace monorepo（`packageManager: pnpm@11.7.
 ```
 deepseek-harness/
 ├── apps/            # 应用：cli（命令行）、web（前端外壳）
-├── packages/        # 全部业务包（约 50+ 个），按领域分组
+├── packages/        # 全部业务包（约 60+ 个），按领域分组
 ├── vendor/          # 内嵌的第三方框架源码（cordis、cosmokit、loader、schemastery 等）
 ├── docs/            # 官方文档（架构、子系统、cookbook、用户指南，多语言）
 ├── examples/        # 可运行示例（web-cordis、headless-agent、mcp-memory、acp-agent、web-schedule）
@@ -73,7 +73,11 @@ pnpm run build:web
 | `preset/` | agent-presets | 代理预设（per-agent 能力组合） |
 | `session/` | session-query、session-projection、session-reference、session-title、session-telemetry | 会话查询/投影/标题/遥测 |
 | `api/` | remotes | Host↔Client 类型化 RPC |
-| 其他 | acp、attachment、code-runtime、compaction、context、credentials、feedback、guard、hooks、identity、interaction、lsp、mcp、plan、runtime-diagnostics、sdk、schedule、settings、spill、storage、todo、typert、util/*、web、workflow、workspace、extensions/*、test-support | 各自领域能力 |
+| `experimental/` | webworker-runtime、webworker-packer | 浏览器 worker 运行时与 VFS 镜像打包器 |
+| `inspector/` | inspector | Cordis 检查器（通过 CDP 暴露 Cordis 树） |
+| `team/` | team | Agent Teams（实验性 CLI 和 Web profile） |
+| `webhook/` | webhook、webhook-github | Webhook 集成（GitHub 事件处理） |
+| 其他 | acp、attachment、code-runtime、compaction、context、credentials、deepseek（session log upload）、feedback、guard、hooks、identity、interaction、lsp、mcp、plan、runtime-diagnostics、sdk、schedule、settings、spill、storage、todo、typert、util/*、web、workflow、workspace、extensions/*、test-support | 各自领域能力 |
 
 包之间以 `peerDependencies` 表达运行时依赖；`docs/module-graph.md` 用 mermaid 生成了完整的包级依赖图（由 `scripts/gen-module-graph.ts` 维护，构建期有 `verify-module-graph` 门禁）。
 

@@ -52,9 +52,9 @@ interface ToolDefinition {
 
 `core/agent-tool-presentation` 与 `packages/extensions` 下的 UI 包：工具的调用卡片（`tool.call.toolview` Slot，第 17 章）由工具的呈现回调 + 客户端渲染器共同决定。`ToolPresentation` 类型声明工具可提供的 UI 形态（文本、卡片、图表……）。
 
-## 12.6 Code Mode：同一管道的复用
+## 12.6 PTC mode：同一管道的复用
 
-`packages/core/tools/src/code-mode.ts`：**Code Mode**（模型以代码而非工具调用表达操作的执行模式）复用同一条受保护管道——代码里的文件操作、命令执行仍然经过 fs/sandbox 策略与审批。这保证"无论模型用工具还是代码，安全边界一致"。
+`packages/core/tools/src/ptc.ts`：**PTC mode（Process-Tool-Call mode，原 Code Mode）**（模型以代码而非工具调用表达操作的执行模式）复用同一条受保护管道——代码里的文件操作、命令执行仍然经过 fs/sandbox 策略与审批。这保证"无论模型用工具还是代码，安全边界一致"。PTC mode 通过 `run_code` 工具实现，支持 TypeScript 和 Python 两种 SDK 语言，每种语言有独立的 schema 描述和 SDK 指令。
 
 `0.1.0-rc.7` 起，含图片的已结算子调用会经外层 `run_code` 结果**通用延后**：成功结算的子调用的最终 Native 内容若含图片，其完整有序内容被包装成带来源归属的用户消息、随外层结果进入模型上下文（下一次模型请求能看到持久图片），post-execute 替换/阻止仍然权威，纯文本结果不重复。分发桥接层从已结算的最终内容观察并转发，叶子工具无需感知父调用（第 15 章的附件接缝提供持久图片存储）。
 
@@ -67,7 +67,7 @@ interface ToolDefinition {
 - 工具 = schema + execute + 呈现；`defineTool` 类型化构造；
 - 执行管道 = 三个 waterfall（pre/execute/post），策略在 pre 挂接，审批在其中；
 - 工具注册即作用域化副作用；schema 自动进提示词组装；
-- Code Mode 复用同一受保护管道；
+- PTC mode（Process-Tool-Call mode）复用同一受保护管道；
 - 执行身份不可变；取消两态闭合日志。
 
 下一章：提示词组装与 scope 原语。

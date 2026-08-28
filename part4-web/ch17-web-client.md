@@ -120,7 +120,60 @@ interface WebBootEntry {
 
 `packages/bundle/web-app` 把 base bundle + webserver + client modules + UI 组件包等行组合成 web profile。第 8 章的启动链路在 Host 侧完成装载后，Host 启动 webServer，浏览器访问 3080 → 页面加载 → boot 清单 → 客户端运行时 → 连接 Host——一条完整的链路。
 
-## 17.11 设计亮点小结
+## 17.11 浏览器 Worker 运行时（webworker）
+
+`packages/experimental/webworker-runtime` 与 `packages/experimental/webworker-packer` 引入了**浏览器 worker 运行时**——在浏览器 worker 线程中运行完整的 dsh 宿主环境，配合 VFS（虚拟文件系统）镜像打包器，实现零安装的浏览器端 Agent 体验。
+
+Webworker 运行时的核心架构：
+
+- **VFS 镜像**：`webworker-packer` 把 Host 端的文件系统状态打包成镜像，通过 `postMessage` 传输到 worker；
+- **Node 兼容性层**：worker 内部提供 `createRequire`、`process` 身份、`node:module` 等 Node API 的浏览器实现；
+- **模块系统**：复用客户端的 `ClientModuleSystem`，在 worker 中装载插件 bundle；
+- **预览系统**：支持可选择的预览 fixture，`packages/experimental/webworker-packer/src/fixture-manifest.ts` 管理示例种子。
+
+Webworker 运行时目前仍处于实验阶段（`packages/experimental/`），主要用于开发与演示场景，生产部署仍以 Node Host 为主。
+
+## 17.12 Cordis Inspector（CDP 集成）
+
+`packages/inspector/` 提供 **Cordis Inspector**——通过 Chrome DevTools Protocol (CDP) 暴露 Cordis 插件树，允许开发者在浏览器 DevTools 中检查和调试运行时的插件状态。
+
+Inspector 的关键特性：
+
+- **CDP DOM 投影**：`feat(inspector): expose Cordis trees through CDP DOM` 把 Cordis 插件树映射为 DOM 节点，DevTools Elements 面板可直接浏览；
+- **CDP Network 代理**：`feat(inspector): project Host fetches through CDP Network` 把 Host 的 fetch 请求投影到 DevTools Network 面板；
+- **CDP Worker 服务**：`feat(inspector): serve Runtime through a CDP Worker` 通过 CDP Worker 提供运行时检查接口；
+- **开发挂载覆盖层**：`feat(inspector): add the development mount overlay and demo script` 支持开发环境的动态挂载与演示脚本。
+
+Inspector 是开发工具，不参与生产部署，但为理解 Cordis 运行时状态提供了强大的可视化能力。
+
+## 17.13 词法 Composer（lexical composer）
+
+`packages/client/ui-conversation` 的输入框从 textarea 栈迁移到**词法编辑器（lexical editor）**，这是 `0.1.2-alpha.1` 的重要 UI 重构：
+
+- **词法节点**：输入框内容建模为词法节点树（`lexical chip node, projections, span map`），支持结构化引用（文件、会话、@mention）的内联渲染与编辑；
+- **编辑范围携带**：每次编辑自带作用范围（`Composer edits carry the range they applied to`），避免引用降级为字面文本；
+- **滚动共享**：两层文本（输入层与预览层）共用同一个滚动容器（`The composer's two text layers share one scrollport`）；
+- **Safari 兼容**：修复 Safari textarea 软换行收缩恢复问题（`Safari textarea soft-wrap shrink recovery`）。
+
+词法 Composer 为后续的结构化输入（如多模态引用、内联工具调用）奠定了基础。
+
+## 17.14 Streaming Fence 高亮
+
+`feat(client): highlight streaming fences incrementally` 实现了**流式栅栏增量高亮**——当模型响应被多个工具调用分隔时，每个栅栏（fence）在流式输出过程中逐步高亮，而非等待完整响应后一次性渲染。
+
+Streaming fence 高亮与 Turn rail（`feat(web): navigate loaded Chat Turns from a compact rail`）配合，提供长对话的导航与可视化能力。
+
+## 17.15 浏览器认证与 WebSocket 安全
+
+`0.1.2-alpha.1` 强化了浏览器端的认证机制：
+
+- **签名浏览器 Cookie**：WebSocket upgrade 前先执行 `/api` Host/Origin 校验，再执行与一元 HTTP 相同的签名浏览器 cookie 认证（`signed browser-cookie authentication`）；
+- **认证状态码**：未受信任的 authority 或跨来源 Origin 得到 403；Host 可信但未认证的请求得到 401；两者都不会启动 Remote stream；
+- **Fetch 认证栅栏**：`refactor(web): remove fetch approval policy` 移除了旧的 fetch 审批策略，统一通过认证契约控制。
+
+这些变更确保浏览器端的 Host 访问与 WebSocket 连接遵循一致的安全模型。
+
+## 17.16 设计亮点小结
 
 1. 两阶段引导（模块面 → 插件面）与 shell 自足；
 2. 双向异质连接（HTTP 上行 + 只读 WS 下行）与 DNS-rebinding fence 信任模型；
@@ -128,7 +181,10 @@ interface WebBootEntry {
 4. Slot 的声明即认领、shadowing 选举、abdicate 失败隔离；
 5. 主题 token 覆盖成对校验与首屏防闪烁；
 6. @Remote 生成式契约，两侧共享 InvocationDescriptor；
-7. 会话快照折叠：UI 只见日志派生快照。
+7. 会话快照折叠：UI 只见日志派生快照；
+8. 浏览器 Worker 运行时（实验性）与 Cordis Inspector（CDP 集成）；
+9. 词法 Composer 与 Streaming Fence 增量高亮；
+10. 签名浏览器 Cookie 认证与统一安全模型。
 
 > **文档提醒**：`docs/subsystems/web.md` 讲的是 `ctx.web`（Web 搜索/抓取工具），不是 Web 客户端——读官方文档时注意区分；`ctx.clientModules`（Host 侧）与 `ctx.modules`（浏览器侧）也易混淆。
 

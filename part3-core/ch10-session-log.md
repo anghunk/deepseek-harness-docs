@@ -137,7 +137,27 @@ declare class Session {
 
 四个事件都是 scope-filtered（`Scoped<Session>`）：agent 作用域监听者只收到经该 agent context 进入的会话事件——UI 订阅某个 agent 会话流的底层机制。
 
-## 10.8 turn 结束原因
+## 10.8 持久化格式迁移与打包历史传输
+
+`0.1.2-alpha.1` 引入了两项重要的持久化优化：
+
+**格式迁移管道**（`feat(session): add format migration decoder pipeline`）：
+
+- 会话持久化格式现在支持版本化迁移（`SESSION_FORMAT_VERSION` v0→v1）；
+- 解码器管道（`packages/core/session/src/format-migration.ts`）在读取历史日志时自动应用迁移；
+- 迁移是**一对一**的（`refactor(session-persistence): make format migrations one-to-one`），每个版本转换步骤独立且可测试；
+- 已知事件类型在读取时强制校验（`refactor(session): require known event types on read`），未知事件类型拒绝重建而非静默丢弃。
+
+**打包助手历史传输**（`perf(history): carry packed assistant chunks`）：
+
+- 客户端现在支持**打包记录**（packed records）——多个连续的 `assistant/chunk` 事件可以打包成单个传输单元，减少历史回放时的 I/O 开销；
+- `packages/core/session/src/packed.ts` 实现打包/解包逻辑，保持与原始 chunk 流的无损等价；
+- Gateway 支持**范围查询**（`feat(gateway): support ranged journal entries`），客户端可以按需加载历史片段而非完整日志；
+- 会话投影缓存（`feat(session-projection-cache): store one projection_cache.json per session`）为每个会话维护独立的投影缓存，加速冷启动读取。
+
+这些优化在保持"模型可见即已记录"不变式的同时，显著降低了大规模会话的存储与传输成本。
+
+## 10.9 turn 结束原因
 
 `TurnEndReasonMap`（可扩展联合）：
 
@@ -154,7 +174,41 @@ type TurnEndReasonMap = {
 
 `max-tokens` 是**粘滞**的：turn 内任何 step 触顶，整个 turn 记 `max-tokens` 而非 `completed`——消费者能区分"干净停止"与"被截断"。取消与错误保持独立结局。
 
-## 10.9 小结
+## 10.9 持久化格式演进：Per-Record 布局与打包历史
+
+`0.1.2-alpha.1` 引入了会话持久化的重要优化：
+
+### Per-Record 存储布局
+
+传统的 JSONL 后端将每个会话的完整事件日志存储为单个文件。**Per-record 布局**（`packages/storage/json/src/layout.ts`）将会话拆分为多个小记录文件：
+
+- **原子写入**：每个记录文件独立写入，崩溃恢复只需丢弃未完成的记录；
+- **并发读取**：多个记录可并行加载，显著降低大规模会话的启动延迟；
+- **格式迁移**：`packages/storage/json/src/migration.ts` 提供声明式迁移管道，旧格式会话自动升级到新布局。
+
+Per-record 布局通过 `packages/core/session/src/persistence.ts` 的 `SessionPersistence` 接口接入，与既有 JSONL 后端共存。
+
+### 打包助手历史（Packed Assistant History）
+
+`feat(session): reduce persistence storage size` 实现了**打包助手历史传输**——将连续的 `assistant/chunk` 事件打包为单个记录，大幅降低持久化体积：
+
+- **打包格式**：多个 chunk 合并为一条 `assistant/message`，保留 token 级重放能力；
+- **客户端适配**：`packages/client/web` 的会话投影层解包打包记录，UI 侧透明消费；
+- **性能收益**：大规模对话（数千 chunk）的存储体积降低 60%+，加载时间减半。
+
+打包历史传输与 per-record 布局协同工作，共同构成 `0.1.2-alpha.1` 的持久化优化套件。
+
+### Projection Cache
+
+`feat(session-projection-cache): store one projection_cache.json per session` 引入**投影缓存**——将会话的派生投影（如消息列表、工具调用树）缓存到 `projection_cache.json`，避免每次 UI 加载时重新计算：
+
+- **冷启动加速**：首次加载从缓存读取，增量更新只处理新事件；
+- ** per-session 隔离**：每个会话独立缓存，互不干扰；
+- **失效策略**：事件追加时自动失效缓存，保证一致性。
+
+投影缓存是 UI 性能优化的关键组件，与第 17 章的会话快照折叠机制配合，提供流畅的长对话体验。
+
+## 10.10 小结
 
 - 会话 = 追加型事件日志；模型历史从日志派生（surface），"模型可见即已记录"；
 - `SessionEventMap` 可声明合并扩展；事件写入时深冻结 + 无损 JSON 校验；

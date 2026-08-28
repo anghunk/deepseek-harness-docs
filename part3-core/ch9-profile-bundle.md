@@ -42,8 +42,11 @@ function allPatches(composed) {
 | `dsh-base`（`packages/bundle/base`） | 每个 profile 的第一层：模型适配器、工具、持久化、沙箱与审批策略、设置、凭据、遥测 |
 | `dsh-web-app`（`packages/bundle/web-app`） | 增加浏览器应用（web profile 使用） |
 | `dsh-headless`（`packages/bundle/headless`） | 一次性运行器，无服务器（headless profile 使用） |
+| `dsh-sdk-app`（`packages/bundle/sdk-app`） | SDK profile：stdio JSON-RPC 服务与进程生命周期（Python SDK 使用） |
+| `dsh-sdk-minimal`（`packages/bundle/sdk-minimal`） | 独立最小化 profile（用于快照测试与最小配置场景） |
+| `dsh-acp-app`（`packages/bundle/acp-app`） | ACP profile：自动化控制平面（Agent Control Protocol） |
 
-内置 profile 模板（`web`、`headless`）就是"哪个 bundle 列表 + 什么入口行"的预置组合。
+内置 profile 模板（`web`、`headless`、`sdk`、`sdk-minimal`、`acp`）就是"哪个 bundle 列表 + 什么入口行"的预置组合。`0.1.2-alpha.1` 起，profile 系统成为 dsh 作为唯一 Node 应用启动器的统一入口：Python SDK 通过 `dsh sdk` profile 启动，ACP 自动化通过 `dsh acp` profile 启动，每个 profile 拥有独立的 bundle 组合与 patch 重载策略。
 
 ## 9.3 patch 语法
 
