@@ -137,7 +137,54 @@ declare class Session {
 
 四个事件都是 scope-filtered（`Scoped<Session>`）：agent 作用域监听者只收到经该 agent context 进入的会话事件——UI 订阅某个 agent 会话流的底层机制。
 
-## 10.8 持久化格式迁移与打包历史传输
+
+## 10.8 会话持久化重构：Handle-Based Seam
+
+`0.1.2-alpha.4` 引入了会话持久化的重要架构变更（`refactor(session-persistence)!: handle-based seam with a lifecycle-owned write path`）：
+
+**Handle-Based 生命周期管理**：
+
+- 持久化写入路径现在由**生命周期拥有的句柄**管理，而非直接持有会话引用；
+- `SessionPersistenceHandle` 封装了写入语义，与会话生命周期解耦；
+- 这种重构使得持久化后端可以更好地管理资源生命周期，避免悬挂引用；
+- 崩溃恢复语义保持不变，但内部实现更加健壮。
+
+这一变更影响了所有持久化后端（JSONL、SQLite），但对外部 API 无破坏性变化。
+
+## 10.9 会话投影缓存：跨版本读取兼容性
+
+`0.1.2-alpha.5` 改进了会话投影缓存（`session-projection-cache`）的健壮性：
+
+**跨版本兼容性**：
+
+- `fix(session-projection-cache): keep upgraded caches readable and boots safe across domain versions` 确保升级后的缓存仍可读取；
+- 引入**版本读取兼容性**（`feat(storage): version read compatibility and backup-and-skip salvage for per-record units`）；
+- 当缓存格式不兼容时，采用**备份并跳过**策略而非硬失败；
+- 这保证了会话在升级后能够快速恢复，不会因为缓存格式变化而卡死。
+
+**Schema 变更.fixture 规则**：
+
+- 新增规则：当 fixture 依赖的 schema 发生变更时，必须同步更新 fixture 或明确标记为预期失败；
+- 这防止了缓存投影的静默损坏。
+
+## 10.10 会话轮次大纲投影
+
+`0.1.2-alpha.3` 引入了**会话轮次大纲**功能（`session-turn-outline`）：
+
+**轮次大纲投影**：
+
+- `feat(session-turn-outline): whole-log turn outline projection` 实现整日志的轮次大纲投影；
+- 将会话日志按 turn 边界组织成大纲结构，提供高层次的会话导航视图；
+- UI 层可以基于此投影实现**轮次导航栏**（`feat(ui-chat): scrollable fixed-pitch turn rail`）；
+- 支持**深度历史分页**（`feat(session-controller): loadThrough deep history paging`），长对话可以按需加载历史片段。
+
+**性能优化**：
+
+- `perf(session-projection): memoize raw views by state identity` 通过状态身份记忆化原始视图；
+- `feat(session-projection): identity-gated change feed` 实现身份门控的变更流；
+- 这些优化使得大规模会话的 UI 响应更加流畅。
+
+## 10.11 持久化格式迁移与打包历史传输
 
 `0.1.2-alpha.1` 引入了两项重要的持久化优化：
 
@@ -157,7 +204,7 @@ declare class Session {
 
 这些优化在保持"模型可见即已记录"不变式的同时，显著降低了大规模会话的存储与传输成本。
 
-## 10.9 turn 结束原因
+## 10.12 turn 结束原因
 
 `TurnEndReasonMap`（可扩展联合）：
 
@@ -208,7 +255,7 @@ Per-record 布局通过 `packages/core/session/src/persistence.ts` 的 `SessionP
 
 投影缓存是 UI 性能优化的关键组件，与第 17 章的会话快照折叠机制配合，提供流畅的长对话体验。
 
-## 10.10 小结
+## 10.13 小结
 
 - 会话 = 追加型事件日志；模型历史从日志派生（surface），"模型可见即已记录"；
 - `SessionEventMap` 可声明合并扩展；事件写入时深冻结 + 无损 JSON 校验；

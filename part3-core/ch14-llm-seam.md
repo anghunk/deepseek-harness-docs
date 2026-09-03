@@ -135,6 +135,32 @@ abstract class LlmAdapter {
 
 加一个 provider = 实现 `LlmAdapter` + `registerAdapter`（官方 cookbook：`docs/cookbook/adding-an-llm-adapter.md`）。
 
+
+
+### 14.5.1 模型发现改进（0.1.2-rc.1）
+
+`0.1.2-rc.1` 对模型发现机制进行了重要改进：
+
+**协议特定的模型列表发现**：
+
+- `fix(llm): scope Anthropic /v1 handling to model discovery` 将 Anthropic 的 `/v1` 路径处理限定在模型发现范围内；
+- 不同 provider 的模型列表端点现在可以独立配置和发现；
+- `test(llm): replay Anthropic's documented model-listing example` 添加了 Anthropic 模型列表的录制回放测试；
+- `test(llm): archive recorded provider model listings` 归档了各 provider 的模型列表快照，便于回归测试。
+
+**配置头复用**：
+
+- `fix(llm): reuse profile headers for model discovery` 模型发现现在复用 profile 的请求头配置；
+- `fix(llm): validate configured provider headers` 验证配置的 provider 头信息；
+- 这确保了模型发现请求与正常 LLM 请求使用一致的身份验证和配置。
+
+**发现名称回退**：
+
+- `test(llm): expect discovery name fallback` 添加了发现名称回退的测试覆盖；
+- 当模型发现返回的名称与预期不符时，系统会尝试回退到兼容的名称格式。
+
+这些改进提高了模型发现的健壮性和可测试性，特别是对于 Anthropic 等非标准模型列表协议的 provider。
+
 ## 14.6 小结
 
 - 消息词汇三件套：Message/ContentBlock/StreamChunk，全部可声明合并扩展、构造即冻结；

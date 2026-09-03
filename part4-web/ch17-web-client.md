@@ -173,7 +173,67 @@ Streaming fence 高亮与 Turn rail（`feat(web): navigate loaded Chat Turns fro
 
 这些变更确保浏览器端的 Host 访问与 WebSocket 连接遵循一致的安全模型。
 
-## 17.16 设计亮点小结
+
+## 17.16 UI 性能优化套件（0.1.2-alpha.2 ~ 0.1.2-alpha.5）
+
+`0.1.2-alpha.2` 到 `0.1.2-alpha.5` 期间，Web 客户端经历了大规模的性能优化：
+
+### 流式传输优化
+
+- `perf(conversation): publish streaming updates every two frames` → `perf(conversation): publish streaming updates every three frames`：流式更新节流从每 2 帧调整为每 3 帧发布一次，平衡实时性与渲染开销；
+- `perf(chat): throttle scroll geometry sampling`：限制滚动几何采样的频率，避免频繁重排触发；
+- `perf(chat): skip stable node list mapping`：跳过稳定节点列表的映射，减少不必要的 DOM 操作；
+- `perf(web): defer tool body formatting until expansion`：工具体的格式化延迟到展开时——折叠态不付出格式化代价。
+
+### 客户端投影优化
+
+- `perf(client): materialize conversation targets on demand`：会话目标按需物化（非预计算）；
+- `perf(client): linearize inbox projection state`：收件箱投影状态线性化，避免嵌套 observable 的连锁更新；
+- `refactor(client): bind keyed chat sources in renderer`：在渲染器中绑定键控聊天源；
+- `refactor(client): share conversation context initialization`：共享会话上下文初始化逻辑。
+
+### UI 渲染优化
+
+- `perf(ui-chat): contain collapsed reasoning layout`：约束折叠推理的布局范围；
+- `perf(ui-chat): retain the stats resize observer`：保留统计尺寸观察器避免重复创建；
+- `perf(ui-chat): derive user action reveal in CSS`：将用户操作揭示逻辑移到纯 CSS 实现；
+- `perf(ui-chat): scope turn process updates`：限定 turn 进程更新的作用域；
+- `perf(ui-chat): move reasoning tail alignment to CSS`：推理尾部对齐移到 CSS；
+- `perf(ui-deliverables): move overflow sizing to CSS`：溢出尺寸计算移到 CSS；
+- `perf(trajectory): page resident history before rendering`：在渲染前对常驻历史进行分页。
+
+### 其它 UI 改进
+
+- `feat(web): superellipse corners and hairline elevation strokes`：超椭圆圆角与发丝线海拔描边；
+- `feat(web): deepen composer stroke to l2, widen menu radii to 20px`：加深 composer 描边到 L2，菜单圆角加宽到 20px；
+- `fix(web): per-element elevation tokens and review sync`：按元素的海拔 token 同步审查。
+
+这些优化将长对话、大量工具调用的场景下的 UI 延迟降低了显著幅度。
+
+## 17.17 网络代理路由（0.1.2-alpha.4 ~ 0.1.2-rc.1）
+
+`0.1.2-alpha.4` 起引入了统一的**出站网络代理路由**：
+
+**代理工具库**：
+
+- `refactor(net): make the proxy a util library with six functions` → `refactor(http-proxy): converge the proxy API on four functions`：网络代理从插件重构为工具库（`packages/util/http-proxy`），API 收敛到四个核心函数；
+- `feat(net): route every outbound request through the configured proxy`：所有出站请求（LLM、搜索、抓取）统一经过配置的代理；
+- 代理策略支持分层（`fix(http-proxy): give children the user's environment under a layered direct policy`）——子进程在分层直接策略下继承用户的环境。
+
+**环境代理合约**：
+
+- `fix(app-boot): accept the proxy names from the Harness-home .env alone`：`app-boot` 只接受 Harness 主目录 `.env` 中的代理名称；
+- `fix(http-proxy): withhold NODE_USE_ENV_PROXY when the child receives a refused proxy value`：当子进程收到被拒绝的代理值时，不设置 `NODE_USE_ENV_PROXY`；
+- `fix(http-proxy): match the workspace version to the 0.1.2-rc.1 release`：工作区版本与 0.1.2-rc.1 发布版对齐。
+
+**Worker 代理支持**：
+
+- `fix(webworker): register a node:https placeholder for the proxy agent factory`：为代理工厂注册 `node:https` 占位符，确保 WebWorker 中的出站请求也能走代理；
+- `test(net): assert the child and worker proxy seam by Node version`：按 Node 版本测试子进程与 Worker 的代理接缝。
+
+代理路由是零配置的：用户在 `~/.dsh/settings.yaml` 或 `.env` 中设置 `HTTPS_PROXY`/ `HTTP_PROXY` 即可，所有出站请求自动走代理。
+
+## 17.18 设计亮点小结
 
 1. 两阶段引导（模块面 → 插件面）与 shell 自足；
 2. 双向异质连接（HTTP 上行 + 只读 WS 下行）与 DNS-rebinding fence 信任模型；
