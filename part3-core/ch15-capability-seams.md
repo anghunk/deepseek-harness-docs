@@ -16,6 +16,7 @@
 | `ctx.codeRuntime` | seam | `packages/code-runtime/code-runtime` | `code-runtime-worker` | Code Mode |
 | `ctx.storage` | seam | `packages/storage/storage` | `storage-json`、`storage-sqlite` | 各持久化域 |
 | `ctx.attachments` / `ctx.credentials` | seam | `attachment` / `credentials` | `attachment-local` / `credentials-local` | LLM 适配器、Web/ACP/MCP 图片入口、Code Mode |
+| `ctx.fileUploads` | seam | `client/file-upload` | `file-upload` | Agent-scoped staged file uploads |
 | `ctx.approval` | seam | `interaction/user-approval` | `acp`(桥) | `tools`、`tool-bash`、`tool-fs` |
 
 **接缝语义设计核心**：多个同族 Provider（本地/沙箱/远程 e2b）通过"一次只装一个对应 ctx 服务的实现"热切换，工具层与策略层不感知后端差异——这是全书最值得强调的架构主线之一。

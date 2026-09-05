@@ -191,8 +191,8 @@ fi
 # ---------- 5. dsh headless 分析并更新文档 ----------
 [ -f "${CRED_FILE}" ] || die "凭据文件不存在: ${CRED_FILE}"
 export OPENCODE_GO_API_KEY=$(
-  grep '^OPENCODE_GO_API_KEY:' "${CRED_FILE}" | head -1 \
-  | sed 's/^OPENCODE_GO_API_KEY:[[:space:]]*//' | tr -d '"'"'"' '
+  grep -E '^[[:space:]]*OPENCODE_GO_API_KEY:' "${CRED_FILE}" | head -1 \
+  | sed -E 's/^[[:space:]]*OPENCODE_GO_API_KEY:[[:space:]]*//' | tr -d '"'"'"' '
 )
 [ -n "${OPENCODE_GO_API_KEY:-}" ] || die "凭据文件中未找到 OPENCODE_GO_API_KEY"
 

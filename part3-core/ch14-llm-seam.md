@@ -56,7 +56,7 @@ type StreamChunk =
   | { type: 'finish'; finish: FinishReason; replayState?: ReplayEnvelope }  // 终局，之后什么都不发
 ```
 
-成功的 `finish` 可以携带 `ReplayEnvelope`（失败/中止不携带）。`FinishReasonMap`（可扩展）：`stop | tool-calls | max-tokens | aborted{failure} | error{failure}`。`ContentBlockMap`（可扩展）：`text | reasoning | image | tool-call | tool-result`。
+成功的 `finish` 可以携带 `ReplayEnvelope`（失败/中止不携带）。`FinishReasonMap`（可扩展）：`stop | tool-calls | max-tokens | aborted{failure} | error{failure}`。`ContentBlockMap`（可扩展）：`text | reasoning | image | file | tool-call | tool-result`。
 
 `BlockAssembler`（assembler.ts:36-164）把 chunk 流增量组装成消息：
 

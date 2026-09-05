@@ -97,7 +97,7 @@ turn/start
      step/start
      append entered messages as user/message
      derive model history from the log
-     agent/request -> llm/stream -> assistant/chunk* -> assistant/message
+     agent/request -> llm/stream -> agent/assistant-stream start -> chunk* -> assistant/message/attempt -> end
      tool/call* -> tools/pre-execute -> tools/execute -> tools/post-execute -> tool/result*
      step/end
   -> agent/turn-stopping

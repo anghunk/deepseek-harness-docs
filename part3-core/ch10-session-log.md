@@ -33,16 +33,16 @@
 | `turn/end` | `{ turn, reason }` | 关闭 turn，reason ∈ `TurnEndReasonMap` |
 | `step/start` / `step/end` | `{ turn, step }` | 一个 step 的边界（一次模型调用 + 其工具执行） |
 | `user/message` | `UserMessage` | 用户角色消息：直接提示、`agent.inject()` 注入上下文、目标续跑轮 |
-| `assistant/chunk` | `{ turn, step, chunk }` | 原始流式块——token 级重放保真 |
-| `assistant/message` | `{ turn, step, message, usage? }` | 组装好的助手消息（派生历史用它），携带 token 用量 |
+| `assistant/message` | `{ turn, step, message, stream, usage? }` | 组装好的助手消息，**嵌入精确紧凑带时间 stream**（`AssistantStreamRecord[]`），携带 token 用量 |
+| `assistant/attempt` | `{ turn, step, stream }` | 未产生 surface message 的模型 attempt——失败、重试、取消或 stream error attempt 的持久 stream |
 | `tool/call` | `{ turn, step, callId, name, arguments }` | 模型请求一次工具调用（arguments 是模型原始 JSON 字符串，**不解析**） |
 | `tool/result` | `{ turn, step, message, error?, meta? }` | 工具完成的模型可见结果 + 可选内部失败标识 + 工具私有 meta |
 | `todo/write` | `{ todos }` | 任务清单整体快照（仅日志 UI 状态，不进派生历史） |
 | `request/header` | `{ header, reason }` | 下一个请求的完整信封（配置+系统提示词+工具 schema） |
 | `request/context` | `RequestContext` | 路由元数据（provider/model/contextWindow） |
-| `session/end-seed` | — | 种子（resume/fork/replay）结束边界 |
+| `session/end-seed` | `{ inherited? }` | 种子（resume/fork/replay）结束边界；fork 子会话带 `inherited: true` 标记 |
 
-**只记事实，不记中间态**：turn/step 边界、chunk、usage 都是"事实"；`request/header` 以全量快照记录（latest wins 重建）；`todo/write` 也是全量快照。而 `assistant/chunk` **必须**保留——`seq` 连续性是持久化契约，chunk 不能被过滤掉。
+**只记事实，不记中间态**：turn/step 边界、embedded streams、usage 都是"事实"；`request/header` 以全量快照记录（latest wins 重建）；`todo/write` 也是全量快照。**V2 格式移除 `assistant/chunk`**——每次模型 attempt 的 stream 直接嵌入 `assistant/message` 或 `assistant/attempt`，保持 `seq` 连续性同时消除冗余事件信封。
 
 ## 10.3 SessionEvent：日志条目
 
@@ -66,7 +66,7 @@ type SessionEvent<T extends SessionEventType = SessionEventType> = {
 
 - **真判别联合**：按 `type` 判别（而非独立的 type/data 联合），`switch (event.type)` 自动收窄 `event.data`；
 - **ignorable 标记**：缺省 = 必需。读者遇到无法识别且无标记的事件**必须拒绝重建**，而不是静默丢弃——"忘记标记宁可过度拒绝，也不可静默续用一个被掏空的会话"；
-- **Surface 元数据**：只有三种消息产生型事件（`SurfaceEventType = 'user/message' | 'assistant/message' | 'tool/result'`）可以携带 `surfaceOp` 与 `sourceEventSeqs`——编译器在 `Session.append` 调用点强制这一约束。
+- **Surface 元数据**：只有三种消息产生型事件（`SurfaceEventType = 'user/message' | 'assistant/message' | 'tool/result'`）可以携带 `surfaceOp`——编译器在 `Session.append` 调用点强制这一约束。**V2 格式中 `assistant/message` 不能携带 `sourceEventSeqs`**（类型系统强制为 `never`），因为 stream 已直接嵌入；只有 `user/message` 和 `tool/result` 可以引用更早事件。
 
 ## 10.4 Surface：派生历史的唯一入口
 
@@ -80,9 +80,11 @@ type SessionEvent<T extends SessionEventType = SessionEventType> = {
 **派生规则**（`deriveEventMessage`）：
 
 - `user/message` → 用户消息（content 原样）；
-- `assistant/message` → 助手消息；**空 content 的 assistant/message 被跳过**（max-tokens 截断仍记录 usage/provider/model，但不进模型转录）；
+- `assistant/message` → 助手消息；**空 content 的 assistant/message 被跳过**（max-tokens 截断仍记录 stream/usage/provider/model，但不进模型转录）；
 - `tool/result` → 携带 `tool-result` 块的用户消息；
-- `assistant/chunk` → 派生时**跳过**（组装后的 message 才是权威）。
+- `assistant/attempt` → 派生时**跳过**（仅日志记录，不产生模型历史）。
+
+注意：v2 格式不再存在 `assistant/chunk` 事件——stream 直接嵌入 `assistant/message` 或 `assistant/attempt`。
 
 ## 10.5 Session 公开 API
 
@@ -184,25 +186,37 @@ declare class Session {
 - `feat(session-projection): identity-gated change feed` 实现身份门控的变更流；
 - 这些优化使得大规模会话的 UI 响应更加流畅。
 
-## 10.11 持久化格式迁移与打包历史传输
+## 10.11 持久化格式迁移：v0→v1→v2
 
-`0.1.2-alpha.1` 引入了两项重要的持久化优化：
+`0.1.3-alpha.1` 引入 Session 格式 v2（`SESSION_FORMAT_VERSION = 2`），这是首个结构性格式升级：
 
-**格式迁移管道**（`feat(session): add format migration decoder pipeline`）：
+**格式版本演进**：
 
-- 会话持久化格式现在支持版本化迁移（`SESSION_FORMAT_VERSION` v0→v1）；
-- 解码器管道（`packages/core/session/src/format-migration.ts`）在读取历史日志时自动应用迁移；
-- 迁移是**一对一**的（`refactor(session-persistence): make format migrations one-to-one`），每个版本转换步骤独立且可测试；
-- 已知事件类型在读取时强制校验（`refactor(session): require known event types on read`），未知事件类型拒绝重建而非静默丢弃。
+- **v0**（`session.jsonl[.zstd]`）：原始格式，`assistant/chunk` 作为独立事件，`assistant/message` 通过 `sourceEventSeqs` 引用 chunk；
+- **v1**（`session.v1.jsonl[.zstd]`）：恒等迁移，保留 v0 结构但为 v2 铺垫；
+- **v2**（`session.v2.jsonl[.zstd]`）：移除 `assistant/chunk`，`assistant/message` 直接嵌入 `stream: AssistantStreamRecord[]`（紧凑带时间表示），新增 `assistant/attempt` 保留失败 attempt 的 stream。
 
-**打包助手历史传输**（`perf(history): carry packed assistant chunks`）：
+**相邻迁移边（Adjacent Pure Edges）**：
 
-- 客户端现在支持**打包记录**（packed records）——多个连续的 `assistant/chunk` 事件可以打包成单个传输单元，减少历史回放时的 I/O 开销；
-- `packages/core/session/src/packed.ts` 实现打包/解包逻辑，保持与原始 chunk 流的无损等价；
-- Gateway 支持**范围查询**（`feat(gateway): support ranged journal entries`），客户端可以按需加载历史片段而非完整日志；
-- 会话投影缓存（`feat(session-projection-cache): store one projection_cache.json per session`）为每个会话维护独立的投影缓存，加速冷启动读取。
+- 迁移由静态 `@deepseek-ai/dsh-session-format-catalog` 编排，不依赖已挂载插件；
+- 每条边 `vN → vN+1` 是独立纯包：`dsh-session-format-v0-to-v1`（恒等）和 `dsh-session-format-v1-to-v2`（Assistant stream 嵌入 + 密集引用重映射）；
+- `open` 存储 Session 时在返回句柄前组合完整迁移链，校验最终结果，排他发布最终具名版本后继（不覆盖源文件）；
+- `stat` 和 `list` 仅处理 header，选择数值最高规范 generation 并在内存中转换历史 header，不加载事件正文。
 
-这些优化在保持"模型可见即已记录"不变式的同时，显著降低了大规模会话的存储与传输成本。
+**不可变发布与 generation 保留**：
+
+- 规范文件名编码物理格式代际：v0 无版本后缀，v1+ 使用小写 `session.vN.jsonl[.zstd]`；
+- 已提交 generation 路径绝不重命名、替换或删除；
+- 运行时选择最高规范文件名，保留的低代际供 operator 检查或显式复制，但不作为自动 fallback；
+- 只读文件系统报告可操作的迁移失败，不返回与磁盘不一致的内存视图。
+
+**历史格式拒绝策略**：
+
+- v0→v1 迁移边拒绝每个未知历史事件类型（包括标记 `ignorable: true` 的事件），因为不透明 payload 可能包含无法校验的引用；
+- 当前 v2 恢复保留已安装扩展和携带 `ignorable: true` 的未知事件；
+- 拒绝不会发布后继，源 generation 保持权威且不变。
+
+这些变更在保持"模型可见即已记录"不变式的同时，将每次模型 attempt 的完整 stream 嵌入单个 settlement，消除冗余 chunk 事件并保留失败 attempt 的诊断信息。
 
 ## 10.12 turn 结束原因
 
@@ -221,45 +235,13 @@ type TurnEndReasonMap = {
 
 `max-tokens` 是**粘滞**的：turn 内任何 step 触顶，整个 turn 记 `max-tokens` 而非 `completed`——消费者能区分"干净停止"与"被截断"。取消与错误保持独立结局。
 
-## 10.9 持久化格式演进：Per-Record 布局与打包历史
-
-`0.1.2-alpha.1` 引入了会话持久化的重要优化：
-
-### Per-Record 存储布局
-
-传统的 JSONL 后端将每个会话的完整事件日志存储为单个文件。**Per-record 布局**（`packages/storage/json/src/layout.ts`）将会话拆分为多个小记录文件：
-
-- **原子写入**：每个记录文件独立写入，崩溃恢复只需丢弃未完成的记录；
-- **并发读取**：多个记录可并行加载，显著降低大规模会话的启动延迟；
-- **格式迁移**：`packages/storage/json/src/migration.ts` 提供声明式迁移管道，旧格式会话自动升级到新布局。
-
-Per-record 布局通过 `packages/core/session/src/persistence.ts` 的 `SessionPersistence` 接口接入，与既有 JSONL 后端共存。
-
-### 打包助手历史（Packed Assistant History）
-
-`feat(session): reduce persistence storage size` 实现了**打包助手历史传输**——将连续的 `assistant/chunk` 事件打包为单个记录，大幅降低持久化体积：
-
-- **打包格式**：多个 chunk 合并为一条 `assistant/message`，保留 token 级重放能力；
-- **客户端适配**：`packages/client/web` 的会话投影层解包打包记录，UI 侧透明消费；
-- **性能收益**：大规模对话（数千 chunk）的存储体积降低 60%+，加载时间减半。
-
-打包历史传输与 per-record 布局协同工作，共同构成 `0.1.2-alpha.1` 的持久化优化套件。
-
-### Projection Cache
-
-`feat(session-projection-cache): store one projection_cache.json per session` 引入**投影缓存**——将会话的派生投影（如消息列表、工具调用树）缓存到 `projection_cache.json`，避免每次 UI 加载时重新计算：
-
-- **冷启动加速**：首次加载从缓存读取，增量更新只处理新事件；
-- ** per-session 隔离**：每个会话独立缓存，互不干扰；
-- **失效策略**：事件追加时自动失效缓存，保证一致性。
-
-投影缓存是 UI 性能优化的关键组件，与第 17 章的会话快照折叠机制配合，提供流畅的长对话体验。
-
 ## 10.13 小结
 
 - 会话 = 追加型事件日志；模型历史从日志派生（surface），"模型可见即已记录"；
 - `SessionEventMap` 可声明合并扩展；事件写入时深冻结 + 无损 JSON 校验；
+- **v2 格式**：`assistant/message` 嵌入精确 stream，`assistant/attempt` 保留失败 attempt，移除 `assistant/chunk`；
 - surface 的 `replace` 是压缩机制；`replaceGeneration` 供增量消费者区分增长与重写；
+- **格式迁移**：相邻纯边（v0→v1→v2）在 `open` 时组合，排他发布最终版本；
 - 持久化是插件接缝（`session/event` + `session/flush`）；
 - `SessionStore` 的 prepare/enter/announce 分阶段生命周期支持有序拆卸与可否决发布。
 

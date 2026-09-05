@@ -72,7 +72,7 @@ turn/start
      每条已进入消息 → user/message
      request/header + request/context（仅变化时）→ 日志
      agent/request (waterfall) → 冻结调用配置
-     llm/stream (waterfall) → assistant/chunk* → assistant/message
+     llm/stream (waterfall) → agent/assistant-stream start → chunk* → assistant/message/attempt → end
      tool/call* → 工具调度 → tool/result*
      step/end
      模型还欠请求或 next-step 有新输入 → claim → 下一个 step
@@ -83,7 +83,7 @@ turn/end
 源码关键位置（`agent.ts`）：
 
 - `turn()` 主体：`dispatch.serial('agent/turn-stopping', { turn, signal })`（`agent.ts:296`）在 while 循环内——监听者反对（返回 bail 值）→ 循环重读 inbox 再跑一步（`target='next-step'`）；
-- `step()`：`agent/pre-step` waterfall 之后 `step/start`，追加 `user/message` 批次，组装请求，`agent/request` waterfall 冻结配置，`llm/stream` 取流，消费 chunk 写 `assistant/chunk`，收尾 `assistant/message`（带 usage），随后工具调度；
+- `step()`：`agent/pre-step` waterfall 之后 `step/start`，追加 `user/message` 批次，组装请求，`agent/request` waterfall 冻结配置，`llm/stream` 取流，消费 chunk 发出 `agent/assistant-stream` 帧，收尾写入 `assistant/message`（成功，嵌入精确 stream 和 usage）或 `assistant/attempt`（失败/重试/取消/流错误，嵌入精确 stream），随后工具调度；
 - 工具调度按 **model-ordered commit**：按模型返回顺序逐个 `tools/execute`，未执行的调用合成 `tool/result`（skipped 标记）。
 
 ### 三个 waterfall 的 next() 语义
@@ -94,7 +94,7 @@ turn/end
 | `agent/request` | `await next()` 得到机器将用的配置（首次为 agent options，之后为已记录的 header）；返回替换即切换。**不能改消息**——模型可见内容必须走持久通道 |
 | `agent/request-error` | 返回 `{ kind: 'retry' }` 且不调 next() 即接管恢复；next() 委派；默认 undefined 终局 |
 
-> **文档勘误**：`docs/architecture.md:84` 的 waterfall 清单遗漏了 `agent/request-error`（`runtime-types.ts:260` 明确 `@mode waterfall`）。另外官方 `core.md` 称 `agent/request-error` 在 "step closes" 之后触发，源码实际次序为：`assistant/chunk* → agent/request-error → step/end（finally）→ agent/error → turn/end`——即 request-error 在 step/end **之前**。若监听者返回 retry，step 根本不会关闭。
+> **文档勘误**：`docs/architecture.md:84` 的 waterfall 清单遗漏了 `agent/request-error`（`runtime-types.ts:260` 明确 `@mode waterfall`）。另外官方 `core.md` 称 `agent/request-error` 在 "step closes" 之后触发，源码实际次序为：`agent/assistant-stream chunk* → assistant/message/attempt → agent/request-error → step/end（finally）→ agent/error → turn/end`——即 request-error 在 step/end **之前**。若监听者返回 retry，step 根本不会关闭。
 
 ### agent/request-error 与重试
 
