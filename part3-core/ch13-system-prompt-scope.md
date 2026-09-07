@@ -38,6 +38,17 @@
 
 `assemble(context)` 输出**可合并扩展**的 `PromptAssembly { sections, contexts, tools, variables }`，然后跑 `system-prompt/assemble` **waterfall**——专家监听者可以改写组装结果（`complete` 节除外）。
 
+### 部署 persona 前缀与后缀
+
+`0.1.3-alpha.2` 起，配置中的 `persona` 字段拆分为 `personaPrefix` 和 `personaSuffix` 两个独立模板：
+
+- **`personaPrefix`**（order `0`）：位于第一方指导之前的全局 persona 前缀模板，通常包含模型名称介绍
+- **`personaSuffix`**（order `10200`）：位于第一方指导之后的全局 `deployment:persona-suffix` 模板，携带环境信息
+
+第一方段落按以下顺序渲染：harness 身份（order `-1000`）→ 部署 persona 前缀（order `0`）→ 可复用指令（包括生成的工具 SDK 和结构化输出指导）→ 环境后缀：harness 源码（order `10000`）、Web 表层（order `10100`）、部署 persona 后缀（order `10200`）。
+
+这种前缀/后缀分离使 KV Cache 复用更稳定：模型、persona 前缀、工具与前置指令一致时，不同源码路径、本地 Web URL 或 persona 后缀值不会改变可复用的第一方前缀。
+
 ### 事件
 
 | 事件 | 模式 | 语义 |
