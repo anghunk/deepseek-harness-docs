@@ -86,7 +86,7 @@ interface WebBootEntry {
 - **生命周期**：disposer 移除贡献并递归 collapse 声明的子 slot；`slots.inject` 等待 slot 声明生命周期（声明已存在 → 同步跑回调，否则声明提交后跑，collapse 时 dispose）；
 - **inject 面**：`inject: (...args) => Record<string, unknown>` 为注册者业务面；业务数据走 apply 闭包 ctx，不存在 binding 对象参数。
 
-**keyed slot 的典型用例**：设置页「插件」分区的 `configurable` 标签页声明 `settings.plugin.item`（`{ kind: 'keyed', scope: 'root' }`），**键 = 卡片所编辑的 settings 命名空间**（声明 `key` 而非 `id`/`order`）。`0.1.0-rc.7` 起 api-proxy **服务每一个已注册命名空间**（不再有 `WEB_SETTINGS_NAMESPACES`/`PRODUCT_SETTINGS_NAMESPACES` 白名单），标签页以 `settings.describe` 返回的命名空间驱动派发——渲染结果是"存活 Host 插件注册的命名空间 × 注册在这些键上的卡片"两份账本的交集，缺席即无卡片。插件作者在 Host 注册命名空间 + 在浏览器把卡片注册在该键上，仓库外分发的插件也能出现在设置页（第 19 章 19.4 有注册示例）。
+**keyed slot 的典型用例**：设置页「插件」分区的 `configurable` 标签页声明 `settings.plugin.item`（`{ kind: 'keyed', scope: 'root' }`），**键 = 卡片所编辑的 settings 命名空间**（声明 `key` 而非 `id`/`order`）。`0.1.0-rc.7` 起 api-proxy **服务每一个已注册命名空间**（不再有 `WEB_SETTINGS_NAMESPACES`/`PRODUCT_SETTINGS_NAMESPACES` 白名单），标签页以 `settings.describe` 返回的命名空间驱动派发——渲染结果是"存活 Host 插件注册的命名空间 × 注册在这些键上的卡片"两份账本的交集，缺席即无卡片。插件作者在 Host 注册命名空间 + 在浏览器把卡片注册在该键上，仓库外分发的插件也能出现在设置页（第 19 章 19.4 有注册示例）。右侧 Sidebar 的 tab 体坑位 `sidebar.right.pane.tab` 是 keyed slot 的另一个典型用例——键 = tab 类型 `id`，每类 tab（引导页、文本预览、文件树）把自己的体注册进坑位，由注册表按地址/档位认领——详见 17.20 节。
 
 ### 作用域标准 props
 
@@ -233,7 +233,73 @@ Streaming fence 高亮与 Turn rail（`feat(web): navigate loaded Chat Turns fro
 
 代理路由是零配置的：用户在 `~/.dsh/settings.yaml` 或 `.env` 中设置 `HTTPS_PROXY`/ `HTTP_PROXY` 即可，所有出站请求自动走代理。
 
-## 17.18 设计亮点小结
+## 17.18 客户端资源模型（Client resources）
+
+`packages/client/resources` 给"客户端读某个有名东西"建立了统一抽象。每个资源有一个**地址**（`dsh-resource://<protocol>/<path>`）与一个**当前值**；`useResource<T>(address)` 是从提供者读取该值的标准 hook——多个观察者共享同一份订阅，最末一个观察者退订时 provider 才释放。地址是身份，订阅是状态，体（组件）与订阅解耦。
+
+**文件资源地址**（`dsh-resource://file/...`，由 `packages/util/workspace-path` 定义）：
+
+- **`session` 作用域**：`dsh-resource://file/session/<sessionId>/<相对该会话工作区根的百分号编码路径>`——同一个相对路径在不同会话下是两个不同文件；
+- **`absolute` 作用域**：`dsh-resource://file/absolute/<绝对路径>`——只在地址本身不命名会话时使用。
+
+`fileAddressFor(sessionId, root, absolutePath)` / `parseFileAddress(address)` 是两侧共享的构造与解析助手。`file` 资源的值（`{ absolutePath, version, bytes, changed }`）只携带**元数据**与 `changed` 通知——载荷（文件内容）另有专门的按页读取通道（见 17.20），因为内容可能任意大，不能进订阅流。
+
+资源注册表（`ctx.resources`）按地址分桶管理订阅；`useResource` 在 React 侧消费，与 17.7 中 `bindSnapshotSelector` 的"bare observable → React hook"模式一致。
+
+## 17.19 工作区文件服务（Workspace Files）
+
+`packages/api/workspace-files` 把 Host 侧的文件操作拆成两个 Remote 面暴露给客户端：
+
+- **元数据面**：`stat`（文件元信息）、`list`（目录条目，带 `entries` 与 `truncated` 标记）、`changes`（Host 推送的文件变更流）；
+- **内容面**：`read(sessionId, path, { offset }, signal)`——一次读一页行，不传 `limit`，因此页长 = Host 配置的上限（`maxLines`，默认 5000 行；单页还受 `maxBytes`，默认 2 MB 封顶）。
+
+Host 在解析 `session` 地址时以**该会话**的工作区根解析相对路径，`absolute` 地址按字面读。`list` 拒绝会话工作区根之外的路径，因此客户端能列的目录就是它显示的目录；越界请求得到 `workspace-file/outside-workspace`。
+
+**有界字节窗口**（`f7b6a1332` / `bc2174e3a` / `442976344`）：底层 FS 层提供按字节范围的读取，本地实现（`fs-local`）与沙箱实现（`fs-e2b`，支持取消）共享同一合约——单次请求永远有上界，客户端的页读取消费这一层。这是"内容不进资源流"决策的实现基础：`changed` 是通知，`read` 才拉载荷。
+
+**失败码到用户句的映射**（消费方在 `ui-sidebar-textpreview` 的 `failure-line.ts` 与 `ui-sidebar-files` 内）：`workspace-file/not-found`、`workspace-file/outside-workspace`、`workspace-file/too-large`、`workspace-file/not-text`、`workspace-file/not-regular-file`、`workspace-file/not-directory`——未识别码落到通用句 `读取失败：{message}`。
+
+## 17.20 右侧 Sidebar 与停靠系统
+
+右侧 Sidebar 是 Web 客户端的**第三列**（左：会话列表，中：对话，右：Sidebar，参见 17.18 设计亮点）。它承载可停靠的 tab pane，提供"会话进行中随时看得见的文件与产物视图"。
+
+### 停靠基础设施（dockkit）
+
+`packages/client/ui-dockkit` 是可逆的停靠引擎，提供：pane 的 drag/split/fullscreen、pointer 交互、布局持久化（按 session 记）、根 pane 为空时重新播种默认内容。`packages/client/ui-layout` 把 dockkit 装进应用的 grid 框架——右列作为第三列响应视口宽度：
+
+- **normal**：右列按用户偏好宽度展开在对话旁；
+- **fullscreen**：小视口（`≤ 767px`）自动进入，右列覆盖整个视口；
+- **capacity-close**：当左列偏好宽度把右列挤到零，右列自动关闭，保留左列宽度偏好。
+
+每会话保存"打开/关闭 + 模式 + pane 布局"，页面加载恢复。会话 Header 右上角新增 corner slot（`490955078`），随包交付的 Sidebar 切换按钮住在里面——切换按钮随会话拥有，用户在任何会话状态下都能打开 Sidebar。
+
+### Tab 类型注册表
+
+Sidebar 显示内容由 **tab 类型注册表**（`ctx.sidebarRightTabs`）决定。每个类型是一个静态定义：`{ id, kind, patterns?, priority, title, guide? }`。注册表按地址 `patterns` 做档位认领——
+
+- **`extension`**：扩展声明的窄 pattern（如 `*.png`）；
+- **`builtin`**：随包类型（引导页、文件树）；
+- **`fallback`**：最低档，随包 `text` 类型以 `dsh-resource://file/**` 兜底所有文件。
+
+体通过 keyed slot `sidebar.right.pane.tab`（键 = 定义的 `id`）注册——这正是 17.7 keyed slot 的典型用例的另一个实例：键命名类型也命名画它的组件，注册返回 disposer 并经 `ctx.effect` 绑定到插件寿命。
+
+### 三个随包交付的 tab 类型
+
+**引导页**（`ui-sidebar-right`，kind=`guide`，priority=`builtin`，无 `patterns`）：pane 在承载内容之前显示的门。按 kind 打开、记在内部页地址 `sidebar://guide`。体是一组入口框栅格，按 `order` 来自每个已注册类型的 `guide[]` 投影，因此后注册的类型不用引导页知道就能出现；点击入口以 `tabActions.openTab(kind, { replaceTab: true })` 打开被选类型并让引导页自己消失——引导页是门，不是留在被打开者旁边的一页。体同时是替换接缝，渲染 `sidebar.right.tab.guide` 链并**以随包引导页作 fallback**，于是产品接管整个体而没有入口时仍能画。
+
+**文本预览**（`ui-sidebar-textpreview`，kind=`text`，patterns=`['dsh-resource://file/**']`，priority=`fallback`）：每个文件的兜底查看器。地址的最后一段作 tab 标题（不同目录同名文件仍是两个 tab）；体经 `useResource<'file'>` 读元数据，经 `remote.workspaceFiles.read` **按页**读内容——首次挂载读第 1 页，**加载更多**按钮按顺序补页到 `eof`。store 是 Slot 独占标准件、按 tab 分桶（同一文件的两个 tab 各自滚动），跨 tab 切换与重新挂载存活。文件被 agent 改过（资源报 `changed`）只提示不刷新，点击重新载入才丢页重读第 1 页，**滚动位置保留**；导航 `line` 参数在页不够时按顺序补到覆盖为止，没有 seek。体的头部显示完整路径（悬停 tooltip）、换行开关（默认开，按 tab 记）与重读按钮。
+
+**文件树**（`ui-sidebar-files`，kind=`files`，priority=`builtin`，无 `patterns`）：页类型，不认领地址。根是会话工作目录，标签由 `workspaceTitleOf` 给出。树**不**建模为资源——逐层懒加载的目录列表是类型自有的视图状态，住在独占 store、按 tab 分桶；`useResource` 留给只有一个地址的内容。行序是读者的序（目录在前、文件在后，按 `Intl.Collator` numeric），Host 列什么画什么，截断以 `truncated` 标记收尾。点文件即 `openResource(fileAddressFor(...))`——树从不指名查看器，由注册表的认领决定谁画这个地址；扩展在 `dsh-resource://file/**` 上认领更窄 pattern 即可接走点击而树无需改动。
+
+### 产品行为变化：Details 列的移除
+
+`7e017046c` / `108a7478c` / `a7c7e9965` 把文件打开路由改道 Sidebar：
+
+- 工具行的文件链接、产物 chip、`read` 工具行——现在都在 Sidebar 打开为文本预览 tab；
+- 旧的"Details 列"（`ToolDetails`、`details-session-lifecycle` 测试中那根列）被移除，文件链接点击不再打开内联详情；
+- 产物行不再提供 `Show in folder` 按钮——目录没有可查看的文本，文本预览以 `not-regular-file` 拒绝它，与其给一个注定失败的按钮，行什么都不提供。
+
+## 17.21 设计亮点小结
 
 1. 两阶段引导（模块面 → 插件面）与 shell 自足；
 2. 双向异质连接（HTTP 上行 + 只读 WS 下行）与 DNS-rebinding fence 信任模型；
@@ -244,7 +310,11 @@ Streaming fence 高亮与 Turn rail（`feat(web): navigate loaded Chat Turns fro
 7. 会话快照折叠：UI 只见日志派生快照；
 8. 浏览器 Worker 运行时（实验性）与 Cordis Inspector（CDP 集成）；
 9. 词法 Composer 与 Streaming Fence 增量高亮；
-10. 签名浏览器 Cookie 认证与统一安全模型。
+10. 签名浏览器 Cookie 认证与统一安全模型；
+11. 客户端资源模型（`useResource`）与保留订阅——地址是身份，订阅是状态；
+12. 工作区文件服务的有界字节范围读取——本地与沙箱共享同一底层合约；
+13. 右侧 Sidebar 的停靠与 tab 类型注册——keyed slot + chain fallback +档位认领的完整演示；
+14. 会话 Header corner slot 与响应式右列几何。
 
 > **文档提醒**：`docs/subsystems/web.md` 讲的是 `ctx.web`（Web 搜索/抓取工具），不是 Web 客户端——读官方文档时注意区分；`ctx.clientModules`（Host 侧）与 `ctx.modules`（浏览器侧）也易混淆。
 
