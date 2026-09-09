@@ -207,7 +207,7 @@ ${SUMMARY_FILE}
 1. 阅读变更摘要，必要时查阅 ${SOURCE_DIR} 源码，判断影响哪些章节（架构、Cordis、核心子系统、Web 客户端、插件开发技巧、附录）。
 2. 只修改受影响的章节文件：补充新机制/新文件，修正与新版不符的过时描述（如路径、API、行为变化）。不重写整章，不动无关内容；无对应章节影响的变更不强行改文档。
 3. 在 ${DOCS_DIR}/changelog/ 创建或追加变更记录：文件 ${DOCS_DIR}/changelog/${CURRENT_DATE}.md，第一行标题用日期（# ${CURRENT_DATE}），随后列出本次上游提交（范围 ${RANGE_LABEL}）与对文档的改动摘要；若该日期文件已存在则在其基础上追加本次内容。
-4. 同步更新 ${DOCS_DIR}/changelog/index.md 索引：若其中已有 ${CURRENT_DATE} 小节则更新该小节条目摘要；否则在索引中新增 `## ${CURRENT_DATE}` 小节与 `- [${CURRENT_DATE}](${CURRENT_DATE}.md)：一句话摘要`，插入位置保持日期倒序（最新在最上方，紧跟首段介绍之后）。不要改动其他日期的条目与说明文字。
+4. 同步更新 ${DOCS_DIR}/changelog/index.md 索引：若其中已有 ${CURRENT_DATE} 小节则更新该小节条目摘要；否则在索引中新增「## ${CURRENT_DATE}」小节与「- [${CURRENT_DATE}](${CURRENT_DATE}.md)：一句话摘要」条目（两行均独占一行），插入位置保持日期倒序（最新在最上方，紧跟首段介绍之后）。不要改动其他日期的条目与说明文字。
 5. 在 ${DOCS_DIR} 中 git add 并 commit（message 含日期与提交范围，如 \"docs: 同步上游 ${CURRENT_DATE}（${RANGE_LABEL}）\"）。不要 push。
 6. 输出总结：改动了哪些文件（含 changelog 记录与索引）、对应上游哪些提交、哪些变更未影响文档及原因。"
 
