@@ -2,6 +2,10 @@
 
 本页记录每日自动同步上游 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 源码后，对本书各章节所做的增量更新。每条记录以同步日期命名，最新记录在侧边栏顶部。
 
+## 2026-09-09
+
+- [2026-09-09](2026-09-09.md)：Sidebar 图片预览 tab（17.20）、显式文件交付 deliverables 机制（17.21）、Webworker 文件句柄改进（17.22）；Session 格式状态参考文档（ch10）；Agent Teams 包公开发布（ch16）
+
 ## 2026-09-08
 
 - [2026-09-08](2026-09-08.md)：Web 客户端右侧 Sidebar 系统（17.18 客户端资源模型、17.19 工作区文件服务、17.20 停靠侧边栏，Details 列移除）；Session 格式 V3（ch10：`system/message` surface 节点、`surfaceOp` 必填、`startSeq`/`endSeq` 重命名、V2-to-V3 迁移链；ch13：系统提示词迁入 surface；ch16：PTC 事件重命名）

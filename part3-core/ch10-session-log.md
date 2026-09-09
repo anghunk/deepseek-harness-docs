@@ -215,6 +215,10 @@ declare class Session {
 - 运行时选择最高规范文件名，保留的低代际供 operator 检查或显式复制，但不作为自动 fallback；
 - 只读文件系统报告可操作的迁移失败，不返回与磁盘不一致的内存视图。
 
+**写入器与发布真源**（`0.1.5-alpha.2`）：
+
+`SESSION_FORMAT_VERSION` 常量拥有工作区写入器版本号；`docs/session-format-status.md`（双语）拥有唯一的 `latestReleasedVersion` 与 `evidenceTag` 记录。发布状态独立于源码开发而变化，因此通过比较这两个事实推导状态，而不另行维护 `released` 布尔值。文档标准检查（`scripts/doc-standard.spec.ts`）在不访问网络的情况下校验记录结构、双语一致性、证据链接一致性及本地发布版本与写入器版本的大小关系——它证明内部一致性，而非发布事实或新鲜度。
+
 **历史格式拒绝策略**：
 
 - v0→v1 迁移边拒绝每个未知历史事件类型（包括标记 `ignorable: true` 的事件），因为不透明 payload 可能包含无法校验的引用；

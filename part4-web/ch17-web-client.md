@@ -283,11 +283,13 @@ Sidebar 显示内容由 **tab 类型注册表**（`ctx.sidebarRightTabs`）决�
 
 体通过 keyed slot `sidebar.right.pane.tab`（键 = 定义的 `id`）注册——这正是 17.7 keyed slot 的典型用例的另一个实例：键命名类型也命名画它的组件，注册返回 disposer 并经 `ctx.effect` 绑定到插件寿命。
 
-### 三个随包交付的 tab 类型
+### 四个随包交付的 tab 类型
 
 **引导页**（`ui-sidebar-right`，kind=`guide`，priority=`builtin`，无 `patterns`）：pane 在承载内容之前显示的门。按 kind 打开、记在内部页地址 `sidebar://guide`。体是一组入口框栅格，按 `order` 来自每个已注册类型的 `guide[]` 投影，因此后注册的类型不用引导页知道就能出现；点击入口以 `tabActions.openTab(kind, { replaceTab: true })` 打开被选类型并让引导页自己消失——引导页是门，不是留在被打开者旁边的一页。体同时是替换接缝，渲染 `sidebar.right.tab.guide` 链并**以随包引导页作 fallback**，于是产品接管整个体而没有入口时仍能画。
 
 **文本预览**（`ui-sidebar-textpreview`，kind=`text`，patterns=`['dsh-resource://file/**']`，priority=`fallback`）：每个文件的兜底查看器。地址的最后一段作 tab 标题（不同目录同名文件仍是两个 tab）；体经 `useResource<'file'>` 读元数据，经 `remote.workspaceFiles.read` **按页**读内容——首次挂载读第 1 页，**加载更多**按钮按顺序补页到 `eof`。store 是 Slot 独占标准件、按 tab 分桶（同一文件的两个 tab 各自滚动），跨 tab 切换与重新挂载存活。文件被 agent 改过（资源报 `changed`）只提示不刷新，点击重新载入才丢页重读第 1 页，**滚动位置保留**；导航 `line` 参数在页不够时按顺序补到覆盖为止，没有 seek。体的头部显示完整路径（悬停 tooltip）、换行开关（默认开，按 tab 记）与重读按钮。
+
+**图片预览**（`ui-sidebar-imagepreview`，kind=`image`，patterns=`['dsh-resource://file/**/*.png', 'dsh-resource://file/**/*.jpg', 'dsh-resource://file/**/*.jpeg', 'dsh-resource://file/**/*.gif', 'dsh-resource://file/**/*.svg', 'dsh-resource://file/**/*.webp']`，priority=`extension`）：`0.1.5-alpha.2` 新增（`feat(sidebar): preview image files`），认领常见图片扩展名。体经 `useResource<'file'>` 读元数据，通过 `<img>` 标签直接渲染图片内容；支持缩放与平移交互，适配亮/暗主题。
 
 **文件树**（`ui-sidebar-files`，kind=`files`，priority=`builtin`，无 `patterns`）：页类型，不认领地址。根是会话工作目录，标签由 `workspaceTitleOf` 给出。树**不**建模为资源——逐层懒加载的目录列表是类型自有的视图状态，住在独占 store、按 tab 分桶；`useResource` 留给只有一个地址的内容。行序是读者的序（目录在前、文件在后，按 `Intl.Collator` numeric），Host 列什么画什么，截断以 `truncated` 标记收尾。点文件即 `openResource(fileAddressFor(...))`——树从不指名查看器，由注册表的认领决定谁画这个地址；扩展在 `dsh-resource://file/**` 上认领更窄 pattern 即可接走点击而树无需改动。
 
@@ -299,7 +301,36 @@ Sidebar 显示内容由 **tab 类型注册表**（`ctx.sidebarRightTabs`）决�
 - 旧的"Details 列"（`ToolDetails`、`details-session-lifecycle` 测试中那根列）被移除，文件链接点击不再打开内联详情；
 - 产物行不再提供 `Show in folder` 按钮——目录没有可查看的文本，文本预览以 `not-regular-file` 拒绝它，与其给一个注定失败的按钮，行什么都不提供。
 
-## 17.21 设计亮点小结
+## 17.21 显式文件交付（Deliverables）
+
+`0.1.5-alpha.2` 引入了**显式文件交付**机制（`feat/artifact-file-actions` 系列提交）：当 Agent 完成一个产出文件时，系统保存其不可变快照，UI 提供"下载"与"在默认应用中打开"两类操作，保证最终交付物不会因后续编辑或删除而失效。
+
+### 机制分工
+
+- **`packages/fs/tool-present`**：Host 工具，拥有执行、不可变快照、交付类型（`standard`/`ptc`/`cordis` preset 挂载；`minimal` 保留双工具训练配置，不挂载）和持久事件；
+- **`packages/client/ui-deliverables`**：客户端插件，拥有认证快照操作（下载、打开）与浏览器渲染，仅从工具的 `./types` 入口导入类型；
+- **attachment 服务**：保存不可变字节，UI 的打开操作经 Host `native-command` 工具在默认应用中打开经过校验的私有副本；
+- **`deliverables/presented` 事件**：成功最终 `tools/result` 通知时追加到调用方 Session；嵌套调用使用同一个记录器，外层程序随后失败不撤销已完成的嵌套交付。
+
+### 打开操作的授权与隔离
+
+下载与打开请求按**当前查看的 Session、事件序号与文件索引**授权引用。事件本身不保存 Session ID，因此 fork 历史使用子 Session 自己的日志。每次打开创建新的私有副本，应用内编辑不会损坏不可变 attachment，也不会影响后续打开。成功副本保留到插件释放，失败副本立即删除。
+
+### Session ZIP 导出
+
+Session ZIP 保留交付事件，但**不收集其中引用的 attachment 字节**——交付物通过 attachment 服务本身持有，ZIP 只包含事件元数据。
+
+## 17.22 Webworker 文件句柄改进
+
+`0.1.5-alpha.2` 对 `packages/experimental/webworker-runtime` 的文件句柄（File System Access API polyfill）做了三项改进：
+
+- **bigint 身份保持**（`fix(webworker): preserve bigint file handle identity`）：通过 `postMessage` 传输的 FileHandle 对象在 worker 两侧保持同一引用（基于内部 bigint id 的 WeakMap 注册表），避免重复创建句柄导致的状态不一致；
+- **chmod 支持**（`fix(webworker): support file handle chmod`）：worker 内的 FileHandle 现在支持 `chmod(mode)` 操作，与 Node 侧 API 对齐；
+- **兼容性文档**（`docs(webworker): record file handle compatibility`）：`packages/experimental/webworker-packer/README.md` 记录了 FileHandle 的浏览器兼容性矩阵与 bigint 身份行为。
+
+这些改进让 Webworker 中的文件系统操作更接近 Node Host 的行为，减少跨载体差异。
+
+## 17.23 设计亮点小结
 
 1. 两阶段引导（模块面 → 插件面）与 shell 自足；
 2. 双向异质连接（HTTP 上行 + 只读 WS 下行）与 DNS-rebinding fence 信任模型；
@@ -313,8 +344,10 @@ Sidebar 显示内容由 **tab 类型注册表**（`ctx.sidebarRightTabs`）决�
 10. 签名浏览器 Cookie 认证与统一安全模型；
 11. 客户端资源模型（`useResource`）与保留订阅——地址是身份，订阅是状态；
 12. 工作区文件服务的有界字节范围读取——本地与沙箱共享同一底层合约；
-13. 右侧 Sidebar 的停靠与 tab 类型注册——keyed slot + chain fallback +档位认领的完整演示；
-14. 会话 Header corner slot 与响应式右列几何。
+13. 右侧 Sidebar 的停靠与 tab 类型注册——keyed slot + chain fallback + 档位认领的完整演示；
+14. 会话 Header corner slot 与响应式右列几何；
+15. 显式文件交付（deliverables）——不可变快照 + 按 Session 授权打开；
+16. Webworker 文件句柄 bigint 身份保持与 chmod 支持。
 
 > **文档提醒**：`docs/subsystems/web.md` 讲的是 `ctx.web`（Web 搜索/抓取工具），不是 Web 客户端——读官方文档时注意区分；`ctx.clientModules`（Host 侧）与 `ctx.modules`（浏览器侧）也易混淆。
 

@@ -86,12 +86,15 @@ apps/cli/config/agent-presets/     # 部署交付的 preset（standard、code、
 
 **浏览器控制 Remote 迁移（0.1.2-alpha.1）**：浏览器控制操作（截图、点击、输入等）现在通过 `@Remote` 接口暴露，而非直接的 RPC 调用。`feat(subagent): migrate browser control to Remote` 把浏览器控制迁移到 Remote 模式，与第 17 章的类型化 RPC 架构保持一致。这允许浏览器端通过 `ctx.remote.subagent.browserControl.*` 调用 Host 侧的浏览器控制方法，享受 Remote 的类型安全与生命周期管理。
 
-**Agent Teams（实验性）**：`packages/team/` 引入了实验性的 **Agent Teams** 功能，支持多个 Agent 协作完成复杂任务。`0.1.2-alpha.1` 新增了两个 profile：
+**Agent Teams（实验性，0.1.5-alpha.2 起公开发布）**：`packages/experimental/` 下的五个 Agent Teams 包从私有 workspace 包变更为**公开发布的实验性包**：
 
-- `dsh-agent-teams-cli`：CLI 版本的 Agent Teams profile；
-- `dsh-agent-teams-web`：Web 版本的 Agent Teams profile。
+- `packages/experimental/agent-team` → `@deepseek-ai/dsh-experimental-agent-team`
+- `packages/experimental/tool-agent-team` → `@deepseek-ai/dsh-experimental-tool-agent-team`
+- `packages/experimental/agent-team-profile` → `@deepseek-ai/dsh-experimental-agent-team-profile`
+- `packages/experimental/client-ui-agent-team` → `@deepseek-ai/dsh-experimental-client-ui-agent-team`
+- `packages/experimental/agent-team-web-profile` → `@deepseek-ai/dsh-experimental-agent-team-web-profile`
 
-Agent Teams 目前仍处于实验阶段，主要用于探索多 Agent 协作模式。
+这些包保留 `@deepseek-ai/dsh-experimental-*` 命名前缀，加入 dsh 发布系列，用户可直接从 npm 安装完整 Team 组合。`0.1.2-alpha.1` 引入的两个 profile（`dsh-agent-teams-cli` 与 `dsh-agent-teams-web`）现在作为已发布包交付。公开发布不代表稳定或默认受支持，稳定发布包不能对其建立运行时依赖；实验性包可以依赖发布包和其他实验性包。Agent Teams 仍处于实验阶段，主要用于探索多 Agent 协作模式。
 
 **产品提供方的可选安装（0.1.0-rc.7 起）**：生产 `dsh-base` **不再**依赖或挂载 `codex` / `claude-code` 两个可选提供方（安装排除决策）。选择产品集成的 Profile 需显式安装对应的提供方 Bundle（`dsh-subagent-codex` / `dsh-subagent-claude-code`）；其 patch 挂载默认实例，而 Profile 可在 host plane 挂载更多命名实例。两个产品都接受多个唯一的 `providerName` 值，同时保留 `codex` 与 `claude-code` 作为默认值。加载任一插件只注册休眠后端，产品进程到第一次实际委派才启动。每个 Bundle 把可执行文件选择交给包自有的产品运行时：Codex 包运行自身声明的 wrapper，Claude Code 包让锁定的 Agent SDK 选择私有原生可执行文件；两个提供方都不查询或回退宿主产品命令。Agent Preset 通过普通 `dsh-tool-subagent` 配置项的 `provider` 与 `toolName` 准确公开单个 agent 所需的已配置实例，而无需更改 Host 注册表。`standard` / `code` / `cordis` Agent Preset 中对应的工具行以 `backgroundMode: 'one-shot'` 声明：删除行的 `disabled` 字段后，可选参数 `run_in_background` 对由该 preset 组装的 agent 公开——省略或 `false` 在前台等待最终回答；显式 `true` 则经同步 Job 预检与登记后返回父级拥有的 Job id（由通用 `ctx.jobs` / `dsh-tool-jobs` 负责收集、取消与完成通知，见第 15 章），不新增任何产品专属后台状态。
 
