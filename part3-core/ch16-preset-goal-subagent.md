@@ -115,7 +115,7 @@ compaction 是**三维能力缝**（`compaction/compaction` 定义，`compaction
 
 ### spill：溢出
 
-`spill/spill` + `spill-local` + `spill-policy`：**触发条件是单个工具结果超过 `maxInlineBytes` 上限**（不是"上下文整体太大"）——超限结果被溢出到本地文件，模型可见处只放引用，避免把超大内容塞进上下文。`tools/code-dispatch-log` waterfall 提供 run_code 子派发日志的内容替换口。
+`spill/spill` + `spill-local` + `spill-policy`：**触发条件是单个工具结果超过 `maxInlineBytes` 上限**（不是"上下文整体太大"）——超限结果被溢出到本地文件，模型可见处只放引用，避免把超大内容塞进上下文。`tools/ptc-dispatch-log` waterfall（V3 起从 `tools/code-dispatch-log` 改名）提供 run_code 子派发日志的内容替换口。
 
 ## 16.5 会话周边
 

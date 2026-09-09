@@ -67,7 +67,7 @@
 3. 渲染变量、物化动态上下文；
 4. 收集工具 schema（注册的工具自动可见）；
 5. 派发 `system-prompt/assemble` waterfall（可改写）；
-6. 结果进入 `EpochHeader.system`，随 `request/header` 事件**写入会话日志**——保证"请求信封可重建"。
+6. **V3 起**（`0.1.5-alpha.1`）：渲染后的提示词作为 `system/message` surface 事件写入会话日志（位于 surface 节点 0），而非 `request/header` 的 `system` 字段。提示词变更通过 surface 替换表达：首次渲染追加 `system/message`，后续变更替换 surface 节点 0，未变则不操作。`request/header` 仅记录 `config` 和 `tools`，不再包含系统提示词——这使提示词变更与工具变更在日志中可区分（前者是 `system/message` 替换，后者是 `request/header` reason `change`）。
 
 ## 13.4 作用域如何让"每 agent 能力集"成立
 
@@ -84,7 +84,7 @@
 
 - scope 是纯库原语：ScopeKey/Scoped/ScopedLayers，一个 parent 关系同时驱动"注册向下继承"与"事件向上延伸"；
 - system-prompt 注册有序节/上下文/工具 providers/变量，每次模型步前组装 + waterfall 可改写；
-- 组装结果进入日志（request/header），保证可重建；
+- **V3 起**（`0.1.5-alpha.1`）：组装结果作为 `system/message` surface 事件写入日志（surface 节点 0），而非 `request/header.system`。提示词变更通过 surface 替换表达，与工具变更在日志中可区分；
 - 作用域层让每 agent 能力集自然成立，销毁即回卷。
 
 下一章：LLM 适配器接缝。

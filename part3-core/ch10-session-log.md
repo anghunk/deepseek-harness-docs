@@ -37,12 +37,13 @@
 | `assistant/attempt` | `{ turn, step, stream }` | 未产生 surface message 的模型 attempt——失败、重试、取消或 stream error attempt 的持久 stream |
 | `tool/call` | `{ turn, step, callId, name, arguments }` | 模型请求一次工具调用（arguments 是模型原始 JSON 字符串，**不解析**） |
 | `tool/result` | `{ turn, step, message, error?, meta? }` | 工具完成的模型可见结果 + 可选内部失败标识 + 工具私有 meta |
+| `system/message` | `{ turn, step, message }` | 系统提示词作为 surface 节点（V3 新增），渲染后的提示词住在 surface 上而非 `request/header` |
 | `todo/write` | `{ todos }` | 任务清单整体快照（仅日志 UI 状态，不进派生历史） |
-| `request/header` | `{ header, reason }` | 下一个请求的完整信封（配置+系统提示词+工具 schema） |
+| `request/header` | `{ header, reason }` | 下一个请求的完整信封（配置+工具 schema，**V3 起不再包含系统提示词**） |
 | `request/context` | `RequestContext` | 路由元数据（provider/model/contextWindow） |
 | `session/end-seed` | `{ inherited? }` | 种子（resume/fork/replay）结束边界；fork 子会话带 `inherited: true` 标记 |
 
-**只记事实，不记中间态**：turn/step 边界、embedded streams、usage 都是"事实"；`request/header` 以全量快照记录（latest wins 重建）；`todo/write` 也是全量快照。**V2 格式移除 `assistant/chunk`**——每次模型 attempt 的 stream 直接嵌入 `assistant/message` 或 `assistant/attempt`，保持 `seq` 连续性同时消除冗余事件信封。
+**只记事实，不记中间态**：turn/step 边界、embedded streams、usage 都是"事实"；`request/header` 以全量快照记录（latest wins 重建）；`todo/write` 也是全量快照。**V2 格式移除 `assistant/chunk`**——每次模型 attempt 的 stream 直接嵌入 `assistant/message` 或 `assistant/attempt`，保持 `seq` 连续性同时消除冗余事件信封。**V3 格式（0.1.5-alpha.1）将系统提示词迁入 surface**——`system/message` 成为 surface 事件，`request/header` 不再包含 `system` 字段，提示词变更通过 surface 替换表达。
 
 ## 10.3 SessionEvent：日志条目
 
@@ -51,13 +52,13 @@
 type SessionEvent<T extends SessionEventType = SessionEventType> = {
   [K in SessionEventType]: {
     type: K
-    seq: number          // 单调序号，seq = log.length
+    seq: SessionSeq        // 单调序号（V3 起使用 SessionSeq 品牌类型），seq = log.length
     time: number         // epoch ms
     data: SessionEventMap[K]
     ignorable?: true     // 可安全跳过的纯信息记录
   } & (K extends SurfaceEventType ? {
-    sourceEventSeqs?: number[]   // 引用的更早事件 seq
-    surfaceOp?: SurfaceOp        // 'append' | { op: 'replace', start, end }
+    sourceEventSeqs?: SessionSeq[]   // 引用的更早事件 seq（V3 起使用 SessionSeq 品牌）
+    surfaceOp: SurfaceOp        // V3 起必填：'append' | { op: 'replace', startSeq, endSeq }
   } : object)
 }[T]
 ```
@@ -66,23 +67,26 @@ type SessionEvent<T extends SessionEventType = SessionEventType> = {
 
 - **真判别联合**：按 `type` 判别（而非独立的 type/data 联合），`switch (event.type)` 自动收窄 `event.data`；
 - **ignorable 标记**：缺省 = 必需。读者遇到无法识别且无标记的事件**必须拒绝重建**，而不是静默丢弃——"忘记标记宁可过度拒绝，也不可静默续用一个被掏空的会话"；
-- **Surface 元数据**：只有三种消息产生型事件（`SurfaceEventType = 'user/message' | 'assistant/message' | 'tool/result'`）可以携带 `surfaceOp`——编译器在 `Session.append` 调用点强制这一约束。**V2 格式中 `assistant/message` 不能携带 `sourceEventSeqs`**（类型系统强制为 `never`），因为 stream 已直接嵌入；只有 `user/message` 和 `tool/result` 可以引用更早事件。
+- **Surface 元数据**：**V3 起四种消息产生型事件**（`SurfaceEventType = 'system/message' | 'user/message' | 'assistant/message' | 'tool/result'`）**必须**携带 `surfaceOp`——编译器在 `Session.append` 调用点强制这一约束。**V2 格式中 `assistant/message` 不能携带 `sourceEventSeqs`**（类型系统强制为 `never`），因为 stream 已直接嵌入；只有 `system/message`、`user/message` 和 `tool/result` 可以引用更早事件。**V3 格式**（`0.1.5-alpha.1`）将 `surfaceOp` 从可选改为必填，`sourceEventSeqs` 从 `number[]` 改为 `SessionSeq[]`（品牌类型），替换端点从 `start`/`end` 改为 `startSeq`/`endSeq`。
 
 ## 10.4 Surface：派生历史的唯一入口
 
-三种消息产生型事件构成**有序表面（surface）**。`SurfaceOp`：
+**四种**消息产生型事件构成**有序表面（surface）**（V3 起包含 `system/message`）。`SurfaceOp`：
 
 - `'append'`：正常追加到尾部；
-- `{ op: 'replace', start, end }`：用本事件**替换** `start..end` 范围内的表面节点（`start === end` 单节点替换），被遮蔽的节点必须全部出现在 `sourceEventSeqs` 中——这是 **compaction（上下文压缩）** 的机制：压缩后一个摘要节点替换一批旧消息，派生历史立即反映压缩。
+- `{ op: 'replace', startSeq, endSeq }`：用本事件**替换** `startSeq..endSeq` 范围内的表面节点（`startSeq === endSeq` 单节点替换），被遮蔽的节点必须全部出现在 `sourceEventSeqs` 中——这是 **compaction（上下文压缩）** 的机制：压缩后一个摘要节点替换一批旧消息，派生历史立即反映压缩。**V3 起**（`0.1.5-alpha.1`）端点字段从 `start`/`end` 改名为 `startSeq`/`endSeq`，使用 `SessionSeq` 品牌类型。
 
 `Session.surface` 是活的只读投影：`nodes`（模型可见顺序的表面事件 seq 列表）+ `replaceGeneration`（位置替换的单调计数，增量消费者据此区分"纯尾部增长"与"重写"）。
 
-**派生规则**（`deriveEventMessage`）：
+**派生规则**（`deriveMessages()`，**V3 起唯一派生路径**）：
 
+- `system/message` → 系统消息（V3 新增，空 content 投影为 `null` 不贡献协议消息）；
 - `user/message` → 用户消息（content 原样）；
 - `assistant/message` → 助手消息；**空 content 的 assistant/message 被跳过**（max-tokens 截断仍记录 stream/usage/provider/model，但不进模型转录）；
 - `tool/result` → 携带 `tool-result` 块的用户消息；
 - `assistant/attempt` → 派生时**跳过**（仅日志记录，不产生模型历史）。
+
+**V3 格式变更**（`0.1.5-alpha.1`）：`deriveMessages()` 以遍历 surface 作为**唯一派生路径**，不再对没有 surface 标记的会话回退到线性扫描。缺少必填 `surfaceOp` 标记的 surface 事件无效。
 
 注意：v2 格式不再存在 `assistant/chunk` 事件——stream 直接嵌入 `assistant/message` 或 `assistant/attempt`。
 
@@ -186,20 +190,21 @@ declare class Session {
 - `feat(session-projection): identity-gated change feed` 实现身份门控的变更流；
 - 这些优化使得大规模会话的 UI 响应更加流畅。
 
-## 10.11 持久化格式迁移：v0→v1→v2
+## 10.11 持久化格式迁移：v0→v1→v2→v3
 
-`0.1.3-alpha.1` 引入 Session 格式 v2（`SESSION_FORMAT_VERSION = 2`），这是首个结构性格式升级：
+`0.1.3-alpha.1` 引入 Session 格式 v2（`SESSION_FORMAT_VERSION = 2`），这是首个结构性格式升级。**`0.1.5-alpha.1` 引入 Session 格式 v3**（`SESSION_FORMAT_VERSION = 3`），将系统提示词迁入 surface。
 
 **格式版本演进**：
 
 - **v0**（`session.jsonl[.zstd]`）：原始格式，`assistant/chunk` 作为独立事件，`assistant/message` 通过 `sourceEventSeqs` 引用 chunk；
 - **v1**（`session.v1.jsonl[.zstd]`）：恒等迁移，保留 v0 结构但为 v2 铺垫；
-- **v2**（`session.v2.jsonl[.zstd]`）：移除 `assistant/chunk`，`assistant/message` 直接嵌入 `stream: AssistantStreamRecord[]`（紧凑带时间表示），新增 `assistant/attempt` 保留失败 attempt 的 stream。
+- **v2**（`session.v2.jsonl[.zstd]`）：移除 `assistant/chunk`，`assistant/message` 直接嵌入 `stream: AssistantStreamRecord[]`（紧凑带时间表示），新增 `assistant/attempt` 保留失败 attempt 的 stream；
+- **v3**（`session.v3.jsonl[.zstd]`，`0.1.5-alpha.1`）：**系统提示词迁入 surface**——新增 `system/message` surface 事件，`request/header` 不再包含 `system` 字段；`surfaceOp` 从可选改为必填；`sourceEventSeqs` 从 `number[]` 改为 `SessionSeq[]`（品牌类型）；替换端点从 `start`/`end` 改为 `startSeq`/`endSeq`；PTC 子派发事件从 `tool/code-dispatch` 改名为 `tool/ptc-dispatch`。
 
 **相邻迁移边（Adjacent Pure Edges）**：
 
 - 迁移由静态 `@deepseek-ai/dsh-session-format-catalog` 编排，不依赖已挂载插件；
-- 每条边 `vN → vN+1` 是独立纯包：`dsh-session-format-v0-to-v1`（恒等）和 `dsh-session-format-v1-to-v2`（Assistant stream 嵌入 + 密集引用重映射）；
+- 每条边 `vN → vN+1` 是独立纯包：`dsh-session-format-v0-to-v1`（恒等）、`dsh-session-format-v1-to-v2`（Assistant stream 嵌入 + 密集引用重映射）和 **`dsh-session-format-v2-to-v3`**（系统提示词迁入 + 规范信封）；
 - `open` 存储 Session 时在返回句柄前组合完整迁移链，校验最终结果，排他发布最终具名版本后继（不覆盖源文件）；
 - `stat` 和 `list` 仅处理 header，选择数值最高规范 generation 并在内存中转换历史 header，不加载事件正文。
 
@@ -240,8 +245,9 @@ type TurnEndReasonMap = {
 - 会话 = 追加型事件日志；模型历史从日志派生（surface），"模型可见即已记录"；
 - `SessionEventMap` 可声明合并扩展；事件写入时深冻结 + 无损 JSON 校验；
 - **v2 格式**：`assistant/message` 嵌入精确 stream，`assistant/attempt` 保留失败 attempt，移除 `assistant/chunk`；
+- **v3 格式**（`0.1.5-alpha.1`）：系统提示词迁入 surface（`system/message` 事件），`request/header` 不再包含 `system` 字段，`surfaceOp` 必填，替换端点改为 `startSeq`/`endSeq`；
 - surface 的 `replace` 是压缩机制；`replaceGeneration` 供增量消费者区分增长与重写；
-- **格式迁移**：相邻纯边（v0→v1→v2）在 `open` 时组合，排他发布最终版本；
+- **格式迁移**：相邻纯边（v0→v1→v2→v3）在 `open` 时组合，排他发布最终版本；
 - 持久化是插件接缝（`session/event` + `session/flush`）；
 - `SessionStore` 的 prepare/enter/announce 分阶段生命周期支持有序拆卸与可否决发布。
 

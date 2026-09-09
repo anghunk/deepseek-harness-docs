@@ -4,7 +4,7 @@
 
 ## 2026-09-08
 
-- [2026-09-08](2026-09-08.md)：Web 客户端右侧 Sidebar 系统（17.18 客户端资源模型、17.19 工作区文件服务、17.20 停靠侧边栏，Details 列移除）
+- [2026-09-08](2026-09-08.md)：Web 客户端右侧 Sidebar 系统（17.18 客户端资源模型、17.19 工作区文件服务、17.20 停靠侧边栏，Details 列移除）；Session 格式 V3（ch10：`system/message` surface 节点、`surfaceOp` 必填、`startSeq`/`endSeq` 重命名、V2-to-V3 迁移链；ch13：系统提示词迁入 surface；ch16：PTC 事件重命名）
 
 ## 2026-09-07
 
