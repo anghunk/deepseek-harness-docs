@@ -103,8 +103,25 @@ declare class Session {
   deriveMessages(): Message[]                // 派生模型历史（缓存 + 冻结）
   requestHeader(): EpochHeader | undefined   // 折叠后的请求信封
   requestContext(): RequestContext | undefined
+  
+  // 以下方法已弃用（0.1.5-rc.2），新代码禁止使用：
+  // @deprecated eventAt(seq): SessionEvent | undefined
+  // @deprecated snapshotEvents(fromSeq?, toSeqExclusive?): readonly SessionEvent[]
+  // @deprecated ownEvents(): readonly SessionEvent[]
 }
 ```
+
+### 同步历史读取弃用
+
+`0.1.5-rc.2` 弃用了 `eventAt()`、`snapshotEvents()` 和 `ownEvents()` 三个同步历史读取方法（PR #3828）。决策动机：同步访问任意事件位置会使消费者依赖完整的事件序列立即在内存中可用，而存储方向是停止在内存中保留完整序列。一旦历史事件需要存储 I/O，运行时无法在不保留历史或阻塞存储的情况下保持相同的同步读取保证。
+
+**弃用策略**：
+- 现有调用方可暂缓迁移，但**新调用被禁止**；
+- 不允许暴露相同同步历史访问的新别名或包装器；
+- 测试文件（`scripts/**/*.spec.{ts,tsx}`）仍可使用这三个读取器检查已发出事件并演练 Session 历史行为；
+- 需要完整历史的域操作（如 fork）必须显式设计存储读取路径，不授予对弃用同步读取器的例外。
+
+**替代方案**：设计持久事件字段和 Session 投影，使每个域都能重建其消费者需要的状态；恢复期间恢复该状态，然后从新提交的事件增量维护。恢复后，普通逻辑读取投影或处理已交付的当前事件，而不是回看历史事件。按需呈现的历史内容使用显式异步分页和渐进加载，每次读取限制在请求的窗口内。
 
 ### append 的防御
 
