@@ -2,6 +2,10 @@
 
 本页记录每日自动同步上游 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 源码后，对本书各章节所做的增量更新。每条记录以同步日期命名，最新记录在侧边栏顶部。
 
+## 2026-09-10
+
+- [2026-09-10](2026-09-10.md)：Web 客户端反馈提交对称化、命令标识与文件动作所有权、Agent preset 选择器可见性门控、公共 package manifest 类型；Sidebar 引导页细化（ch17）；插件开发基础（ch18）
+
 ## 2026-09-09
 
 - [2026-09-09](2026-09-09.md)：Sidebar 图片预览 tab（17.20）、显式文件交付 deliverables 机制（17.21）、Webworker 文件句柄改进（17.22）；Session 格式状态参考文档（ch10）；Agent Teams 包公开发布（ch16）

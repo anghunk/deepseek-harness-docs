@@ -285,13 +285,13 @@ Sidebar 显示内容由 **tab 类型注册表**（`ctx.sidebarRightTabs`）决�
 
 ### 四个随包交付的 tab 类型
 
-**引导页**（`ui-sidebar-right`，kind=`guide`，priority=`builtin`，无 `patterns`）：pane 在承载内容之前显示的门。按 kind 打开、记在内部页地址 `sidebar://guide`。体是一组入口框栅格，按 `order` 来自每个已注册类型的 `guide[]` 投影，因此后注册的类型不用引导页知道就能出现；点击入口以 `tabActions.openTab(kind, { replaceTab: true })` 打开被选类型并让引导页自己消失——引导页是门，不是留在被打开者旁边的一页。体同时是替换接缝，渲染 `sidebar.right.tab.guide` 链并**以随包引导页作 fallback**，于是产品接管整个体而没有入口时仍能画。
+**引导页**（`ui-sidebar-right`，kind=`guide`，priority=`builtin`，无 `patterns`）：pane 在承载内容之前显示的门。按 kind 打开、记在内部页地址 `sidebar://guide`。体是一组入口框栅格，按 `order` 来自每个已注册类型的 `guide[]` 投影，因此后注册的类型不用引导页知道就能出现；点击入口以 `tabActions.openTab(kind, { replaceTab: true })` 打开被选类型并让引导页自己消失——引导页是门，不是留在被打开者旁边的一页。体同时是替换接缝，渲染 `sidebar.right.tab.guide` 链并**以随包引导页作 fallback**，于是产品接管整个体而没有入口时仍能画。`0.1.5-rc.2` 起引导页细化：入口胶囊上方绘制一枚弱化的 56px 罗盘图标（`CompassGlyph`）作为视觉锚点，不加标题；`SidebarRightGuideEntry` 新增可选的 thunk 化 `description` 字段，每次渲染重新读取，语言切换无需重新注册；仅当引导页列出的入口不超过 4 个（`MAX_DESCRIBED_ENTRIES`）时，胶囊才在标题下显示描述，更长的列表去掉所有描述以保持轻盈；图标随胶囊高度变化（单行标题旁 22px，两行旁 26px）；没有注册图标的入口回退到内置的立方体占位符（`CubeGlyph`），在渲染点决定（`entry.icon ?? CubeGlyph`）而非注册时，确保每个贡献者得到统一的占位符。
 
 **文本预览**（`ui-sidebar-textpreview`，kind=`text`，patterns=`['dsh-resource://file/**']`，priority=`fallback`）：每个文件的兜底查看器。地址的最后一段作 tab 标题（不同目录同名文件仍是两个 tab）；体经 `useResource<'file'>` 读元数据，经 `remote.workspaceFiles.read` **按页**读内容——首次挂载读第 1 页，**加载更多**按钮按顺序补页到 `eof`。store 是 Slot 独占标准件、按 tab 分桶（同一文件的两个 tab 各自滚动），跨 tab 切换与重新挂载存活。文件被 agent 改过（资源报 `changed`）只提示不刷新，点击重新载入才丢页重读第 1 页，**滚动位置保留**；导航 `line` 参数在页不够时按顺序补到覆盖为止，没有 seek。体的头部显示完整路径（悬停 tooltip）、换行开关（默认开，按 tab 记）与重读按钮。
 
 **图片预览**（`ui-sidebar-imagepreview`，kind=`image`，patterns=`['dsh-resource://file/**/*.png', 'dsh-resource://file/**/*.jpg', 'dsh-resource://file/**/*.jpeg', 'dsh-resource://file/**/*.gif', 'dsh-resource://file/**/*.svg', 'dsh-resource://file/**/*.webp']`，priority=`extension`）：`0.1.5-alpha.2` 新增（`feat(sidebar): preview image files`），认领常见图片扩展名。体经 `useResource<'file'>` 读元数据，通过 `<img>` 标签直接渲染图片内容；支持缩放与平移交互，适配亮/暗主题。
 
-**文件树**（`ui-sidebar-files`，kind=`files`，priority=`builtin`，无 `patterns`）：页类型，不认领地址。根是会话工作目录，标签由 `workspaceTitleOf` 给出。树**不**建模为资源——逐层懒加载的目录列表是类型自有的视图状态，住在独占 store、按 tab 分桶；`useResource` 留给只有一个地址的内容。行序是读者的序（目录在前、文件在后，按 `Intl.Collator` numeric），Host 列什么画什么，截断以 `truncated` 标记收尾。点文件即 `openResource(fileAddressFor(...))`——树从不指名查看器，由注册表的认领决定谁画这个地址；扩展在 `dsh-resource://file/**` 上认领更窄 pattern 即可接走点击而树无需改动。
+**文件树**（`ui-sidebar-files`，kind=`files`，priority=`builtin`，无 `patterns`）：页类型，不认领地址。根是会话工作目录，标签由 `workspaceTitleOf` 给出。树**不**建模为资源——逐层懒加载的目录列表是类型自有的视图状态，住在独占 store、按 tab 分桶；`useResource` 留给只有一个地址的内容。行序是读者的序（目录在前、文件在后，按 `Intl.Collator` numeric），Host 列什么画什么，截断以 `truncated` 标记收尾。点文件即 `openResource(fileAddressFor(...))`——树从不指名查看器，由注册表的认领决定谁画这个地址；扩展在 `dsh-resource://file/**` 上认领更窄 pattern 即可接走点击而树无需改动。`0.1.5-rc.2` 起文件树入口注册了描述文本与共享的文件夹图标（`FolderSheetGlyph`），在引导页中展示时可显示描述。
 
 ### 产品行为变化：Details 列的移除
 
@@ -330,7 +330,41 @@ Session ZIP 保留交付事件，但**不收集其中引用的 attachment 字节
 
 这些改进让 Webworker 中的文件系统操作更接近 Node Host 的行为，减少跨载体差异。
 
-## 17.23 设计亮点小结
+## 17.23 对称消息反馈提交（Symmetric message feedback）
+
+`0.1.5-rc.2` 重构了消息反馈的提交机制，使正面（Like）和负面（Dislike）评分使用相同的提交流程。此前 Like 会立即记录正面评分，而 Dislike 会先打开反馈弹窗，仅在用户提交后才记录。这种不对称会让误触 Like 在确认前就持久化，也让正面反馈无法携带与负面反馈相同的可选分类和描述。
+
+现在两种未记录的评分都打开共用反馈弹窗，并且只在提交后才记录。消息 `FeedbackDialogTarget` 携带所选的 `positive` 或 `negative` 评分，`FeedbackSurface` 将该评分与弹窗条目一起传给 `MessageFeedbackController.rate`。动作行会在任一操作前读取已提交条目：点击当前评分会调用注入的 `retract` 操作（直接创建 `feedback/message-delete` 事件），点击未记录或相反评分则打开弹窗。`retract` 会在控制器的串行变更队列内重新检查已提交评分，并在并发变更后变为无操作，因此不会把陈旧的 UI 意图转成裸评分 put。弹窗的输入仍可全部留空：不选分类也不填描述时提交会记录所选评分并弹出确认 toast；关闭弹窗不会记录任何内容。
+
+这一变化确保用户在提交弹窗前，两种评分都不会创建 `feedback/message-put` 事件。正面与负面记录都可以包含分类和备注，而点击当前评分仍会直接撤回已记录评分，无需打开弹窗。
+
+## 17.24 命令标识与输入框拥有的文件动作（Command identities and composer-owned File action）
+
+`0.1.5-rc.2` 引入了**命令标识**机制，解决了用命令的英文描述匹配客户端词典时标点修改会影响本地化和插入的命令 token 的问题，同时也防止同名覆盖复制描述却没有实现第一方命令行为的情况。
+
+命令注册表现在有效定义和描述符上保留可选的品牌类型 `CommandDefinitionId` 字段 `definitionId`。第一方命令的提供方用包名作为稳定标识。作用域覆盖选择完整描述符，不继承被遮蔽定义的标识。该标识是发现元数据，不代表授权，也不进入命令生命周期事件。
+
+客户端命令目录通过内部的 `resolution.ts` 解析输入。精确注册名优先；中英文别名只选择会话有效目录中对应的内置定义。菜单认领使用当前语言的写法，手输认领保留原写法，提交使用解析到的注册名。`presentation.ts` 只负责分节、标题、说明和图标。解析辅助函数与小节常量不从插件入口导出。
+
+**文件动作**（File action）现在由 Conversation 通过注入的命令服务注册，并负责其本地化标题。已挂载输入框绑定文件选择器回调和一个实时可用性查询。菜单过滤与实际调用使用同一个查询，统一处理锁定、卸载、subagent 和提交状态。绑定与调用留在包内回调中，不需要跨插件的文件选择事件。这样做的理由是输入框负责附件接收和 DOM 生命周期，维护另一套可用性条件会把同一策略分给两个模块。
+
+## 17.25 Agent preset 选择器可见性门控（Agent preset picker visibility gating）
+
+`0.1.5-rc.2` 在 `agent-presets` 用户设置命名空间中引入了 `modeSelectionEnabled` 字段，用于控制 Web UI 中 agent preset 选择器的可见性。该字段默认为 `true`，意味着新建会话界面上的 preset 选择器默认显示。
+
+`agent-presets` 用户设置命名空间现在同时携带 `modeSelectionEnabled` 与 `default`。`modeSelectionEnabled` 默认为 `true`：既有的新建会话选择器保持显示；未指名会话会解析到已保存的用户 `default`，尚未保存时则使用组装中 `default` 指定的部署默认值。Web Settings 中的开关只改变该策略：关闭选择时临时使用部署默认值，再次开启时恢复已保存的用户 `default`。这是对"用户值覆盖组装值"这一普通 settings 优先级的有意例外：隐藏选择器会停用用户的模式选择策略，但不会删除其保存值。
+
+该 Host 策略适用于此后所有未显式指定 preset 的会话；显式指定及既有会话不受影响。组装值还使本包在没有 settings 提供方时照常工作；选择器开启后，用户可覆盖默认值来改变后续会话，而无需编辑部署所拥有的 `cordis.yml`。
+
+在 Web UI 中，设置页的 preset 管理分区现在包含一个可见性开关（默认开启）。关闭该开关会隐藏新建会话界面上的 preset 选择器，并使用部署默认值；重新开启会恢复保存的用户默认值。两种切换都会把有效默认值带入当前空白任务；已开始和历史会话保持其标签、组装和记录的历史。
+
+## 17.26 统计 pill 与输入框细节细化（Stat pill and composer refinements）
+
+`0.1.5-rc.2` 对输入框下方的会话统计弹窗进行了细化。Token 用量弹窗现在仅当 `cacheWriteTokens !== 0` 时渲染 `Cache write` 行，与 per-turn 面板去掉缺失可选字段的做法一致；始终存在的桶（输入、缓存读取、输出）保留各自的行。这一变化避免了从未写入缓存的会话显示无意义的 `Cache write 0 tok` 行。
+
+词法 Composer 的已完成轮次动作页脚（completed-turn action footer）现在从 preceding 散文或扩展内容下方 20px 处开始，提供了更一致的视觉间距。
+
+## 17.27 设计亮点小结
 
 1. 两阶段引导（模块面 → 插件面）与 shell 自足；
 2. 双向异质连接（HTTP 上行 + 只读 WS 下行）与 DNS-rebinding fence 信任模型；
@@ -347,7 +381,11 @@ Session ZIP 保留交付事件，但**不收集其中引用的 attachment 字节
 13. 右侧 Sidebar 的停靠与 tab 类型注册——keyed slot + chain fallback + 档位认领的完整演示；
 14. 会话 Header corner slot 与响应式右列几何；
 15. 显式文件交付（deliverables）——不可变快照 + 按 Session 授权打开；
-16. Webworker 文件句柄 bigint 身份保持与 chmod 支持。
+16. Webworker 文件句柄 bigint 身份保持与 chmod 支持；
+17. 对称消息反馈提交——正面与负面评分共用弹窗，仅在提交后记录；
+18. 命令标识（`CommandDefinitionId`）与 Conversation 拥有的文件动作——稳定标识分离展示与文案；
+19. Agent preset 选择器可见性门控（`modeSelectionEnabled`）——对"用户值覆盖组装值"的有意例外；
+20. 引导起始页罗盘占位与立方体图标回退——4 入口阈值控制描述显隐。
 
 > **文档提醒**：`docs/subsystems/web.md` 讲的是 `ctx.web`（Web 搜索/抓取工具），不是 Web 客户端——读官方文档时注意区分；`ctx.clientModules`（Host 侧）与 `ctx.modules`（浏览器侧）也易混淆。
 

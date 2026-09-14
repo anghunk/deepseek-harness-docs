@@ -183,7 +183,35 @@ export function apply(ctx: Context) {
 
 注册即 effect：fiber 卸载工具自动消失；schema 自动进入提示词组装。
 
-## 18.8 小结
+## 18.8 公共 package manifest 类型（Public package manifest）
+
+`0.1.5-rc.2` 引入了公共的 `DshPackageManifest` 类型（`packages/util/package-manifest/src/types.ts`），用于描述 DSH 使用的 `package.json` 字段。该类型为插件作者提供了统一的公共导入路径，用于声明 npm 身份、运行时要求和 DSH 元数据。
+
+**必填字段**：
+- `name`：包名
+- `version`：版本号
+
+**可选字段**：
+- `dsh`：使用 `DshManifest` 类型描述公共组合与作者元数据。包含 `manifestVersion`（声明格式版本，当前为 `1`）、`bundle`（bundle 声明）、`client`（客户端插件声明）等。
+- `engines`：运行时要求，位于顶层。`dsh`、`node` 和 `npm` 均为可选版本字符串，也允许其他 engine 名称。例如：
+  ```json
+  {
+    "engines": {
+      "node": ">=24",
+      "dsh": "0.1.5-alpha.1"
+    }
+  }
+  ```
+
+**重要说明**：
+- `DshPackageManifest` 只选取所需 npm 字段，不是完整的 `package.json` schema
+- 当前安装器和加载器不强制检查格式与 DSH 兼容性声明
+- 内部工具（镜像打包器的 `configTrees`、工作区目录生成器的 Session 迁移声明、app-boot 的生成模块后备元数据）仍可读取既有磁盘字段，但公共 manifest 类型不暴露这些内部字段
+- 本地 profile 读者使用 `Partial<DshPackageManifest>`，因为 profile 无需发布版本
+
+该类型细化了共享声明归属决策，包位置与依赖规则继续有效。外部作者获得完整的包级声明和更小的 DSH 作者 API。
+
+## 18.9 小结
 
 - 三种插件形态，`apply(ctx, config)` 是共同入口；
 - 依赖声明二选一：inject（硬依赖等待）vs ctx.get（可选读取）；
