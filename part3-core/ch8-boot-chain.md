@@ -164,13 +164,26 @@ sequenceDiagram
   Note over C: dsh web 就绪，监听 3080
 ```
 
-## 8.8 小结
+## 8.8 Profile 解析模式
+
+`0.1.6-alpha.1` 起，app-boot 在挂载 profile 行之前计算一个**不可变的包解析代际**（profile resolution generation），并为三种解析模式提供支持：
+
+- **link 模式**（默认）：物化 `.dsh-module-fallback/` 目录下的符号链接，保持与既有启动行为兼容。安装优先与有序 bundle 广度优先遍历同时产出运行时表与磁盘物化器。
+- **runtime 模式**：通过 Node 的 ESM 与 CommonJS 解析器直接安装 generation，不创建磁盘链接，忽略旧链接位置的陈旧投影。内部调用方与测试 harness 使用此模式。
+- **dual 模式**：物化链接表并与 Node 的磁盘结果对比验证，用于回归测试与调试。
+
+`ProfileResolutionMode = 'link' | 'dual' | 'runtime'` 定义在 `packages/boot/app-boot/src/profile.ts`。三种模式共享同一张包表（`ProfileResolutionGeneration`），区别仅在是否物化链接、是否安装到 Node 解析器、是否验证磁盘结果。解析器位于 `packages/boot/app-boot/src/profile-resolution/`，包含运行时解析器（`resolver.ts`，612 行）、包元数据服务（`service.ts`）与 Worker 引导程序（`worker-bootstrap.ts`）。
+
+`ctx.pluginPackages` 服务（`PluginPackages`）暴露同一代的包元数据，不记录 Entry 导入。已安装的 generation 即使对 miss 也是权威的；未安装 generation 的低级嵌入方保留原生查找。Worker 构建横幅在打包业务代码前导入 `@deepseek-ai/dsh-app-boot/worker/profile-resolution-bootstrap`，每个 Worker 在自己的 isolate 中安装结构化克隆的 generation。
+
+## 8.9 小结
 
 - `dsh` 三模式分发：profile / plugin / dump-config；
 - 环境快照分层收集、bootstrap 变量禁止 `.env` 覆盖；
 - `boot()` = Loader + 根 Include + 等待 settle + 启动审计；失败回卷并解包最深原因；
 - patch 引用别名陷阱 → 每代克隆；
 - `cordis.patch.yml` 热更新由 HMR + `entry.update()` 实现；
-- fail-loud 保证任何启动失败都有单条清晰诊断。
+- fail-loud 保证任何启动失败都有单条清晰诊断；
+- `0.1.6-alpha.1` 起，profile 解析支持 link/runtime/dual 三种模式，共享不可变的包解析代际。
 
 下一章深入 Profile/Bundle 组合机制本身。

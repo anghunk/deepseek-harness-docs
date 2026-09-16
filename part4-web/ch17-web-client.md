@@ -364,7 +364,15 @@ Session ZIP 保留交付事件，但**不收集其中引用的 attachment 字节
 
 词法 Composer 的已完成轮次动作页脚（completed-turn action footer）现在从 preceding 散文或扩展内容下方 20px 处开始，提供了更一致的视觉间距。
 
-## 17.27 设计亮点小结
+## 17.27 Sticky Headers 与 Compaction Banner 改进（0.1.6-alpha.1）
+
+`0.1.6-alpha.1` 对长对话的滚动体验进行了两项改进：
+
+**Sticky Headers**：`feat(web): pin Think and compaction headers sticky while scrolling` 将 Think（推理过程）和 compaction（压缩摘要）的 section header 钉在滚动视口顶部。当用户滚动长对话时，这些 header 保持可见，提供持续的上下文锚点。这与 17.16 中的 `perf(ui-chat): contain collapsed reasoning layout` 配合，优化了长推理链和压缩摘要的可读性。
+
+**Compaction Summary Code Banner**：`fix(web): hold a compaction summary's code banner below the pinned header` 修复了 compaction 摘要中 fenced code block 的 Copy 横幅与钉住 header 重叠的问题。此前，code block 的横幅会钉在 scrollport 顶部，被已钉住的 compaction header 遮挡，导致点击横幅时会意外折叠整个摘要。修复后，横幅停在 header band 下方，钉住 header 的边角改为方形（`border-radius: 0`），使其不透明填充能遮挡下方滚动的内容边缘。这一改进确保了 compaction 摘要的交互控件不会被遮挡，提升了可用性。
+
+## 17.28 设计亮点小结
 
 1. 两阶段引导（模块面 → 插件面）与 shell 自足；
 2. 双向异质连接（HTTP 上行 + 只读 WS 下行）与 DNS-rebinding fence 信任模型；
@@ -385,7 +393,8 @@ Session ZIP 保留交付事件，但**不收集其中引用的 attachment 字节
 17. 对称消息反馈提交——正面与负面评分共用弹窗，仅在提交后记录；
 18. 命令标识（`CommandDefinitionId`）与 Conversation 拥有的文件动作——稳定标识分离展示与文案；
 19. Agent preset 选择器可见性门控（`modeSelectionEnabled`）——对"用户值覆盖组装值"的有意例外；
-20. 引导起始页罗盘占位与立方体图标回退——4 入口阈值控制描述显隐。
+20. 引导起始页罗盘占位与立方体图标回退——4 入口阈值控制描述显隐；
+21. Sticky Headers（Think 与 compaction）与 compaction code banner 位置修复——长对话滚动体验优化。
 
 > **文档提醒**：`docs/subsystems/web.md` 讲的是 `ctx.web`（Web 搜索/抓取工具），不是 Web 客户端——读官方文档时注意区分；`ctx.clientModules`（Host 侧）与 `ctx.modules`（浏览器侧）也易混淆。
 

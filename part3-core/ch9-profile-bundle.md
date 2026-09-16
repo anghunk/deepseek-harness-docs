@@ -115,12 +115,19 @@ Profile/Bundle 组合的是**整个进程**的树；**agent preset** 组合的�
 - Profile：进程级，`dsh --profile web`；
 - Preset：会话级，`$DSH_HOME/.agent-presets/<id>/cordis.yml`，通过 agent 的 scope context 装载，其服务行通常需要 `isolate` realm 隔离。
 
-## 9.9 小结
+## 9.9 原生缓存与 Worker 隔离
+
+`0.1.6-alpha.1` 起，原生缓存生命周期由 addon 管理而非 profile-resolution 服务自行管理。Windows 平台上 Worker 环境暂时提供私有的缓存目录（`mkdtempSync(join(tmpdir(), 'dsh-profile-resolution-native-'))`），业务代码启动前恢复。这一变更移除了 profile-resolution 服务中的私有缓存生命周期管理代码，简化了服务实现。
+
+Worker 构建横幅导入 `@deepseek-ai/dsh-app-boot/worker/profile-resolution-bootstrap`，每个 Worker 在自己的 isolate 中安装结构化克隆的 generation。引导程序包不含静态包导入，确保第三方 Worker 不接收注入。
+
+## 9.10 小结
 
 - 组合 = 空根 + 五层 patch（bundles → profile → home → overlays → 遥测开关），后层覆盖前层；
 - patch 两种形态：id 定向替换与 insert；`!!js` 表达式在激活时求值；
 - `--dump-config` 用 boot 同款算法重放并标注来源，是理解组合的第一工具；
 - 空根配置文件的存在是为了锚定 baseUrl；树写回会被重写清除；
-- 用户层 patch 文件热更新，app 拥有的层不可被用户编辑顶掉。
+- 用户层 patch 文件热更新，app 拥有的层不可被用户编辑顶掉；
+- `0.1.6-alpha.1` 起，原生缓存由 addon 管理，Worker 隔离通过 bootstrap 程序实现。
 
 下一章进入核心子系统：会话日志。
